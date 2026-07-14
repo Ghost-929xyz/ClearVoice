@@ -39,6 +39,21 @@ frontend/
 
 Windows 可通过 `winget install Gyan.FFmpeg` 安装 ffmpeg。
 
+如果已经下载了 ffmpeg 完整压缩包，也可以直接解压到项目内。后端会自动查找以下位置中的
+`bin/ffmpeg.exe`：
+
+```text
+ClearVoice/ffmpeg-8.1.2-full_build/bin/ffmpeg.exe
+ClearVoice/tools/ffmpeg-8.1.2-full_build/bin/ffmpeg.exe
+ClearVoice/backend/tools/ffmpeg-8.1.2-full_build/bin/ffmpeg.exe
+```
+
+也可以在 `backend/.env` 中显式配置：
+
+```bash
+FFMPEG_PATH=../ffmpeg-8.1.2-full_build/bin/ffmpeg.exe
+```
+
 ## 后端启动
 
 ```bash
@@ -70,6 +85,9 @@ npm run dev
 ```
 
 访问 `http://localhost:5173`。
+
+Windows 也可以直接双击项目根目录的 `start_clearvoice.bat`，脚本会自动启动后端、
+前端，并打开 `http://localhost:5173`。
 
 ## API
 

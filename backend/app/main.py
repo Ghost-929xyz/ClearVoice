@@ -49,7 +49,10 @@ async def process_audio(
         )
         return await process_upload(file, runtime_config)
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=500, detail="未找到 ffmpeg，请安装 ffmpeg 或配置 FFMPEG_PATH") from exc
+        raise HTTPException(
+            status_code=500,
+            detail="未找到 ffmpeg，请安装 ffmpeg、配置 FFMPEG_PATH，或将解压后的 ffmpeg 包放到项目根目录、tools 或 backend/tools 目录",
+        ) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

@@ -20,6 +20,18 @@ backend/models/
 *.webm
 *.mp4
 
+# Local ffmpeg packages
+ffmpeg*/
+tools/ffmpeg*/
+vendor/ffmpeg*/
+bin/ffmpeg*/
+backend/ffmpeg*/
+backend/tools/ffmpeg*/
+backend/vendor/ffmpeg*/
+backend/bin/ffmpeg*/
+ffmpeg*.zip
+backend/ffmpeg*.zip
+
 # Frontend
 frontend/node_modules/
 frontend/dist/

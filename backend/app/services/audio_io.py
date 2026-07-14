@@ -11,7 +11,7 @@ from app.config import get_settings
 def convert_to_wav(input_path: Path, output_path: Path) -> None:
     settings = get_settings()
     command = [
-        settings.ffmpeg_path,
+        settings.resolved_ffmpeg_path,
         "-y",
         "-i",
         str(input_path),

@@ -1,59 +1,65 @@
-import numpy as np
+import shutil
+import subprocess
+import sys
+import importlib.util
+import os
+from pathlib import Path
 
 
-def enhance_speech(audio: np.ndarray, sample_rate: int) -> np.ndarray:
-    """Lightweight speech enhancement that works without model downloads."""
-    if audio.size == 0:
-        return audio
-
-    filtered = _fft_bandpass(audio, sample_rate, low=80.0, high=7200.0)
-    denoised = _moving_average_noise_reduction(filtered)
-    gate = _soft_noise_gate(denoised)
-    enhanced = denoised * gate
-    return _normalize(enhanced)
+class EnhancementError(RuntimeError):
+    pass
 
 
-def _fft_bandpass(audio: np.ndarray, sample_rate: int, low: float, high: float) -> np.ndarray:
-    freqs = np.fft.rfftfreq(len(audio), d=1.0 / sample_rate)
-    spectrum = np.fft.rfft(audio)
-    mask = (freqs >= low) & (freqs <= min(high, sample_rate / 2.0 - 1.0))
-    spectrum *= mask
-    return np.fft.irfft(spectrum, n=len(audio)).astype(np.float32)
+def enhance_speech_file(input_wav: Path, output_wav: Path) -> None:
+    """Enhance speech with DeepFilterNet and write a browser-playable WAV file."""
+    if not _deepfilternet_available():
+        raise EnhancementError("未安装 DeepFilterNet。请确认后端使用 .venv 启动，并在 backend 目录执行：python -m pip install -r requirements.txt")
+
+    output_wav.parent.mkdir(parents=True, exist_ok=True)
+    work_dir = output_wav.parent / "deepfilternet"
+    if work_dir.exists():
+        shutil.rmtree(work_dir)
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    command = [
+        sys.executable,
+        "-m",
+        "df.enhance",
+        str(input_wav),
+        "--output-dir",
+        str(work_dir),
+    ]
+
+    try:
+        env = os.environ.copy()
+        # DeepFilterNet can crash on newer GPUs when the installed PyTorch wheel
+        # lacks kernels for that architecture. Keep enhancement stable on CPU.
+        env["CUDA_VISIBLE_DEVICES"] = "-1"
+        subprocess.run(command, check=True, capture_output=True, text=True, env=env)
+    except subprocess.CalledProcessError as exc:
+        detail = exc.stderr or exc.stdout or str(exc)
+        if "No module named 'torch'" in detail or "No module named 'torchaudio'" in detail:
+            raise EnhancementError("DeepFilterNet 依赖不完整，缺少 torch/torchaudio。请使用 .venv 安装 CUDA 版 PyTorch 和 torchaudio。") from exc
+        raise EnhancementError(f"DeepFilterNet 增强失败：{detail[-1500:]}") from exc
+
+    enhanced = _find_enhanced_file(work_dir, input_wav)
+    if not enhanced:
+        raise EnhancementError("DeepFilterNet 未生成增强音频文件")
+    shutil.copyfile(enhanced, output_wav)
 
 
-def _moving_average_noise_reduction(audio: np.ndarray) -> np.ndarray:
-    if len(audio) < 9:
-        return audio.astype(np.float32)
-    kernel = np.ones(5, dtype=np.float32) / 5.0
-    smoothed = np.convolve(audio, kernel, mode="same")
-    return (0.78 * audio + 0.22 * smoothed).astype(np.float32)
+def _find_enhanced_file(work_dir: Path, input_wav: Path) -> Path | None:
+    candidates = list(work_dir.rglob("*.wav"))
+    if not candidates:
+        return None
+
+    input_name = input_wav.stem.lower()
+    for candidate in candidates:
+        name = candidate.stem.lower()
+        if input_name in name or "enhanced" in name or "df" in name:
+            return candidate
+    return candidates[0]
 
 
-def _soft_noise_gate(audio: np.ndarray) -> np.ndarray:
-    frame = 512
-    if len(audio) < frame:
-        return np.ones_like(audio)
-    padded = np.pad(audio, (0, frame - len(audio) % frame))
-    frames = padded.reshape(-1, frame)
-    rms = np.sqrt(np.mean(frames**2, axis=1) + 1e-10)
-    floor = np.percentile(rms, 25)
-    threshold = max(floor * 1.8, 1e-4)
-    frame_gate = np.clip((rms - floor) / (threshold - floor + 1e-6), 0.18, 1.0)
-    frame_gate = _smooth_gate(frame_gate)
-    gate = np.repeat(frame_gate, frame)[: len(padded)]
-    return gate[: len(audio)].astype(np.float32)
-
-
-def _smooth_gate(gate: np.ndarray) -> np.ndarray:
-    if len(gate) < 5:
-        return gate
-    padded = np.pad(gate, (2, 2), mode="edge")
-    windows = np.lib.stride_tricks.sliding_window_view(padded, 5)
-    return np.median(windows, axis=1)
-
-
-def _normalize(audio: np.ndarray) -> np.ndarray:
-    peak = float(np.max(np.abs(audio)))
-    if peak < 1e-6:
-        return audio.astype(np.float32)
-    return (audio / peak * 0.92).astype(np.float32)
+def _deepfilternet_available() -> bool:
+    return importlib.util.find_spec("df.enhance") is not None

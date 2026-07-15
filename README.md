@@ -5,7 +5,7 @@
 系统支持上传音频或视频文件，后端会执行：
 
 - `ffmpeg` 转码为 16 kHz 单声道 WAV
-- 轻量语音增强：带通滤波、Wiener 降噪、软噪声门、归一化
+- DeepFilterNet 语音增强
 - 噪声类型粗分类
 - SNR 和噪声抑制比例估计
 - 原始音频与增强音频转写对比
@@ -21,7 +21,7 @@ backend/
     main.py              FastAPI 入口
     services/
       pipeline.py        主处理链路
-      enhance.py         轻量语音增强
+      enhance.py         DeepFilterNet 语音增强
       metrics.py         SNR 与噪声抑制估计
       noise.py           噪声类型粗分类
       asr.py             Whisper API 转写
@@ -36,6 +36,7 @@ frontend/
 - Python 3.11+
 - Node.js 18+
 - `ffmpeg`
+- DeepFilterNet 依赖 PyTorch，首次安装可能较慢
 
 Windows 可通过 `winget install Gyan.FFmpeg` 安装 ffmpeg。
 
@@ -62,6 +63,12 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload
+```
+
+如果 DeepFilterNet 安装失败，可单独重试：
+
+```bash
+pip install deepfilternet
 ```
 
 可选环境变量：
@@ -119,7 +126,7 @@ GET  /api/audio/file/{task_id}/enhanced
 
 ## 后续增强方向
 
-- 替换 `enhance.py` 为 DeepFilterNet、RNNoise 或 SpeechBrain MetricGAN+
+- 增加 DeepFilterNet 参数配置或 RNNoise / SpeechBrain MetricGAN+ 备选增强器
 - 加入 faster-whisper 本地转写，降低 API 依赖
 - 增加频谱图和波形图可视化
 - 增加异步任务队列，支持长音频处理进度

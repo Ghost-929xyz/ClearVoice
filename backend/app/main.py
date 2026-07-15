@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse
 
 from app.config import get_settings
 from app.schemas import ProcessResult, RuntimeOpenAIConfig
+from app.services.enhance import EnhancementError
 from app.services.pipeline import process_upload
 
 app = FastAPI(title="ClearVoice API")
@@ -53,6 +54,8 @@ async def process_audio(
             status_code=500,
             detail="未找到 ffmpeg，请安装 ffmpeg、配置 FFMPEG_PATH，或将解压后的 ffmpeg 包放到项目根目录、tools 或 backend/tools 目录",
         ) from exc
+    except EnhancementError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

@@ -5,11 +5,14 @@ from shutil import which
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(env_file=BACKEND_DIR / ".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "ClearVoice API"
-    data_dir: Path = Path("data")
+    data_dir: Path = BACKEND_DIR / "data"
     ffmpeg_path: str = "ffmpeg"
     openai_api_key: str | None = None
     openai_base_url: str | None = None

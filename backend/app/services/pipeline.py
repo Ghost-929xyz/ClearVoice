@@ -7,8 +7,8 @@ from fastapi import UploadFile
 from app.config import get_settings
 from app.schemas import AudioInfo, LlmResult, Metrics, NoiseInfo, ProcessResult, RuntimeOpenAIConfig, Transcription
 from app.services.asr import transcribe_audio
-from app.services.audio_io import convert_to_wav, duration_seconds, load_audio, save_audio
-from app.services.enhance import enhance_speech
+from app.services.audio_io import convert_to_wav, duration_seconds, load_audio
+from app.services.enhance import enhance_speech_file
 from app.services.llm import summarize_transcript
 from app.services.metrics import estimate_snr, noise_reduction_ratio, rms
 from app.services.metrics import waveform_peaks
@@ -34,8 +34,8 @@ async def process_upload(file: UploadFile, runtime_config: RuntimeOpenAIConfig |
     convert_to_wav(uploaded_path, original_wav)
 
     audio, sample_rate = load_audio(original_wav)
-    enhanced = enhance_speech(audio, sample_rate)
-    save_audio(enhanced_wav, enhanced, sample_rate)
+    enhance_speech_file(original_wav, enhanced_wav)
+    enhanced, _ = load_audio(enhanced_wav)
 
     noise_type, noise_label, confidence = classify_noise(audio, sample_rate)
     snr_before = estimate_snr(audio)

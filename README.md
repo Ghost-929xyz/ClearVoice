@@ -88,7 +88,7 @@ FFMPEG_PATH=ffmpeg
 前端支持分别配置 ASR 和 LLM。ASR 目前分为两类：
 
 - 可直接使用：`local-whisper`、`openai`、`openai-compatible`、`groq`、`fireworks`
-- 已预留入口但需后端专用适配：`dashscope`、`xunfei`、`volcengine`、`tencent`、`baidu`
+- 已预留入口但需后端专用适配：`dashscope-paraformer`、`dashscope-qwen-audio`、`xunfei`、`volcengine`、`tencent`、`baidu`
 
 可直接使用的云端 ASR 都需要服务商兼容 OpenAI 的音频转写接口：
 
@@ -107,6 +107,13 @@ fireworks           base_url: https://api.fireworks.ai/inference/v1  model: whis
 ```
 
 阿里云 DashScope、讯飞、火山、腾讯云、百度云的 ASR 通常不是 OpenAI Audio API 格式，需要单独实现签名、上传和任务查询逻辑。当前版本会在选择这些 Provider 时返回明确提示，不会伪装成已完整支持。
+
+阿里云已将 SenseVoice 服务下线风险纳入考虑，前端不再提供 SenseVoice 入口，改为预留：
+
+```text
+dashscope-paraformer    录音文件识别 Paraformer/Fun-ASR
+dashscope-qwen-audio    录音文件识别-千问
+```
 
 ## 前端启动
 

@@ -30,7 +30,8 @@ OPENAI_AUDIO_PROVIDERS = {
 }
 
 PLANNED_ASR_PROVIDERS = {
-    "dashscope": "阿里云 DashScope SenseVoice/Paraformer 需要接入 DashScope 专用 API，不能直接走 OpenAI audio/transcriptions。",
+    "dashscope-paraformer": "阿里云录音文件识别 Paraformer/Fun-ASR 需要接入 DashScope 录音文件识别异步任务 API，不能直接走 OpenAI audio/transcriptions。",
+    "dashscope-qwen-audio": "阿里云录音文件识别-千问需要接入 DashScope 千问音频理解/识别接口，不能直接走 OpenAI audio/transcriptions。",
     "xunfei": "讯飞 ASR 需要 WebAPI 签名鉴权和专用接口，当前版本尚未实现。",
     "volcengine": "火山引擎 ASR 需要火山专用签名和任务接口，当前版本尚未实现。",
     "tencent": "腾讯云 ASR 需要腾讯云 SDK/签名接口，当前版本尚未实现。",

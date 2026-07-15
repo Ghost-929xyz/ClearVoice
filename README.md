@@ -83,6 +83,31 @@ FFMPEG_PATH=ffmpeg
 
 如果使用兼容 OpenAI SDK 的模型服务，可以设置 `OPENAI_BASE_URL`。
 
+## ASR Provider
+
+前端支持分别配置 ASR 和 LLM。ASR 目前分为两类：
+
+- 可直接使用：`local-whisper`、`openai`、`openai-compatible`、`groq`、`fireworks`
+- 已预留入口但需后端专用适配：`dashscope`、`xunfei`、`volcengine`、`tencent`、`baidu`
+
+可直接使用的云端 ASR 都需要服务商兼容 OpenAI 的音频转写接口：
+
+```text
+POST /v1/audio/transcriptions
+```
+
+常用配置：
+
+```text
+local-whisper       model: small / medium / large-v1
+openai              base_url: https://api.openai.com/v1              model: whisper-1
+openai-compatible   base_url: 服务商 /v1 地址                         model: whisper-1 或服务商模型名
+groq                base_url: https://api.groq.com/openai/v1         model: whisper-large-v3-turbo
+fireworks           base_url: https://api.fireworks.ai/inference/v1  model: whisper-v3
+```
+
+阿里云 DashScope、讯飞、火山、腾讯云、百度云的 ASR 通常不是 OpenAI Audio API 格式，需要单独实现签名、上传和任务查询逻辑。当前版本会在选择这些 Provider 时返回明确提示，不会伪装成已完整支持。
+
 ## 前端启动
 
 ```bash

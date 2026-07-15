@@ -53,6 +53,18 @@ type ApiSettings = {
 };
 
 const SETTINGS_KEY = 'clearvoice_api_settings';
+const asrProviders = [
+  { value: 'local-whisper', label: 'local-whisper', baseUrl: '', model: 'medium', note: '本地 faster-whisper，ASR Key 可留空。' },
+  { value: 'openai', label: 'OpenAI Whisper', baseUrl: 'https://api.openai.com/v1', model: 'whisper-1', note: 'OpenAI 官方 audio/transcriptions。' },
+  { value: 'openai-compatible', label: 'OpenAI-compatible', baseUrl: 'https://api.openai.com/v1', model: 'whisper-1', note: '用于支持 /v1/audio/transcriptions 的中转服务。' },
+  { value: 'groq', label: 'Groq Whisper', baseUrl: 'https://api.groq.com/openai/v1', model: 'whisper-large-v3-turbo', note: 'Groq OpenAI-compatible 音频接口。' },
+  { value: 'fireworks', label: 'Fireworks Whisper', baseUrl: 'https://api.fireworks.ai/inference/v1', model: 'whisper-v3', note: 'Fireworks OpenAI-compatible 音频接口。' },
+  { value: 'dashscope', label: 'DashScope 预留', baseUrl: '', model: 'sensevoice-v1', note: '阿里云 SenseVoice/Paraformer 需要后端专用适配。' },
+  { value: 'xunfei', label: '讯飞预留', baseUrl: '', model: 'iat', note: '讯飞需要 WebAPI 签名适配。' },
+  { value: 'volcengine', label: '火山预留', baseUrl: '', model: 'bigmodel', note: '火山引擎需要专用签名/任务接口。' },
+  { value: 'tencent', label: '腾讯云预留', baseUrl: '', model: '16k_zh', note: '腾讯云需要 SDK/签名适配。' },
+  { value: 'baidu', label: '百度云预留', baseUrl: '', model: 'zh', note: '百度云需要 OAuth/REST 适配。' }
+];
 const defaultSettings: ApiSettings = {
   asrProvider: 'local-whisper',
   asrApiKey: '',
@@ -170,8 +182,20 @@ function SettingsPanel({ settings, onSave, onClear }: { settings: ApiSettings; o
   }, [settings]);
 
   function update<K extends keyof ApiSettings>(key: K, value: ApiSettings[K]) {
+    if (key === 'asrProvider') {
+      const provider = asrProviders.find((item) => item.value === value);
+      setDraft((current) => ({
+        ...current,
+        asrProvider: String(value),
+        asrBaseUrl: provider?.baseUrl ?? current.asrBaseUrl,
+        asrModel: provider?.model ?? current.asrModel
+      }));
+      return;
+    }
     setDraft((current) => ({ ...current, [key]: value }));
   }
+
+  const selectedAsrProvider = asrProviders.find((item) => item.value === draft.asrProvider);
 
   return (
     <section className="settingsCard">
@@ -191,8 +215,7 @@ function SettingsPanel({ settings, onSave, onClear }: { settings: ApiSettings; o
         <label>
           <span>ASR Provider</span>
           <select value={draft.asrProvider} onChange={(event) => update('asrProvider', event.target.value)}>
-            <option value="local-whisper">local-whisper</option>
-            <option value="openai">openai-compatible</option>
+            {asrProviders.map((provider) => <option key={provider.value} value={provider.value}>{provider.label}</option>)}
           </select>
         </label>
         <label>
@@ -208,6 +231,7 @@ function SettingsPanel({ settings, onSave, onClear }: { settings: ApiSettings; o
           <input value={draft.asrBaseUrl} placeholder="https://api.openai.com/v1" onChange={(event) => update('asrBaseUrl', event.target.value)} />
         </label>
       </div>
+      <p className="settingsHint">{selectedAsrProvider?.note}</p>
 
       <div className="settingsGroupTitle">LLM 摘要配置</div>
       <div className="settingsGrid">

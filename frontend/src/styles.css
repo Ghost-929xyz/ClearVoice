@@ -229,6 +229,12 @@ button.ghost {
   font-weight: 900;
 }
 
+.settingsHint {
+  margin: -4px 0 0;
+  color: #667085;
+  line-height: 1.6;
+}
+
 .settingsActions {
   display: flex;
   gap: 12px;

@@ -86,9 +86,13 @@ if errorlevel 1 (
   )
 )
 
+pushd "%BACKEND_DIR%"
 "%BACKEND_PY%" -c "from app.main import app; print(app.title)" >nul 2>nul
-if errorlevel 1 (
+set "BACKEND_IMPORT_ERROR=%ERRORLEVEL%"
+popd
+if not "%BACKEND_IMPORT_ERROR%"=="0" (
   echo Backend app import failed. Please run the backend command manually to inspect the error:
+  echo cd /d "%BACKEND_DIR%"
   echo "%BACKEND_PY%" -c "from app.main import app; print(app.title)"
   exit /b 1
 )

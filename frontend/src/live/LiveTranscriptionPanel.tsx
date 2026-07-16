@@ -27,7 +27,10 @@ type LiveSegment = {
   speakerConfidence?: number;
 };
 
+type SpeakerAliases = Record<string, string>;
+
 const LIVE_CHUNK_MS = 7000;
+const SPEAKER_ALIASES_KEY = 'clearvoice_live_speaker_aliases';
 
 export function LiveTranscriptionPanel({ settings }: { settings: LiveApiSettings }) {
   const [recording, setRecording] = useState(false);
@@ -39,6 +42,7 @@ export function LiveTranscriptionPanel({ settings }: { settings: LiveApiSettings
   const [enhanceEnabled, setEnhanceEnabled] = useState(false);
   const [llmOptimizeEnabled, setLlmOptimizeEnabled] = useState(false);
   const [liveTopic, setLiveTopic] = useState('');
+  const [speakerAliases, setSpeakerAliases] = useState<SpeakerAliases>(() => loadSpeakerAliases());
 
   const recordingRef = useRef(false);
   const enhanceEnabledRef = useRef(false);
@@ -58,9 +62,9 @@ export function LiveTranscriptionPanel({ settings }: { settings: LiveApiSettings
     () => segments
       .filter((segment) => segment.status === 'done' && segment.text.trim())
       .sort((left, right) => left.sequence - right.sequence)
-      .map((segment) => `${segment.speakerLabel || '说话人 ?'}：${segment.text.trim()}`)
+      .map((segment) => `${speakerDisplayName(segment.speakerLabel, speakerAliases)}：${segment.text.trim()}`)
       .join('\n'),
-    [segments]
+    [segments, speakerAliases]
   );
 
   useEffect(() => () => {
@@ -127,6 +131,28 @@ export function LiveTranscriptionPanel({ settings }: { settings: LiveApiSettings
   function updateLiveTopic(value: string) {
     liveTopicRef.current = value;
     setLiveTopic(value);
+  }
+
+  function renameSpeaker(label?: string) {
+    if (!label) {
+      return;
+    }
+    const currentName = speakerAliases[label] ?? '';
+    const nextName = window.prompt(`为 ${label} 设置显示名称`, currentName);
+    if (nextName === null) {
+      return;
+    }
+    const trimmed = nextName.trim();
+    setSpeakerAliases((current) => {
+      const next = { ...current };
+      if (trimmed) {
+        next[label] = trimmed;
+      } else {
+        delete next[label];
+      }
+      saveSpeakerAliases(next);
+      return next;
+    });
   }
 
   function startNextSegment() {
@@ -359,9 +385,15 @@ export function LiveTranscriptionPanel({ settings }: { settings: LiveApiSettings
               .map((segment) => (
                 <p key={segment.sequence} className={segment.status === 'error' ? 'segmentError' : ''}>
                   <small>#{segment.sequence + 1}</small>
-                  <strong className="speakerTag" title={speakerTitle(segment)}>
-                    {segment.speakerLabel || '说话人 ?'}
-                  </strong>
+                  <button
+                    type="button"
+                    className="speakerTag"
+                    title={speakerTitle(segment, speakerAliases)}
+                    disabled={!segment.speakerLabel}
+                    onClick={() => renameSpeaker(segment.speakerLabel)}
+                  >
+                    {speakerDisplayName(segment.speakerLabel, speakerAliases)}
+                  </button>
                   <em className={segment.optimized ? '' : 'empty'}>{segment.optimized ? 'AI' : ''}</em>
                   {segment.status === 'pending' && <span><Loader2 className="spin" size={14} /> 转写中...</span>}
                   {segment.status === 'done' && <span>{segment.text || '未识别到有效语音'}</span>}
@@ -463,12 +495,39 @@ function upsertSegment(segments: LiveSegment[], next: LiveSegment) {
   return [...others, next].sort((left, right) => left.sequence - right.sequence);
 }
 
-function speakerTitle(segment: LiveSegment) {
+function speakerDisplayName(label: string | undefined, aliases: SpeakerAliases) {
+  if (!label) {
+    return '说话人 ?';
+  }
+  return aliases[label] || label;
+}
+
+function speakerTitle(segment: LiveSegment, aliases: SpeakerAliases) {
   if (!segment.speakerLabel) {
     return '等待音色识别';
   }
   const confidence = Math.round((segment.speakerConfidence || 0) * 100);
-  return `${segment.speakerLabel}，置信度 ${confidence}%`;
+  const displayName = speakerDisplayName(segment.speakerLabel, aliases);
+  return displayName === segment.speakerLabel
+    ? `${segment.speakerLabel}，置信度 ${confidence}%`
+    : `${displayName}（${segment.speakerLabel}），置信度 ${confidence}%`;
+}
+
+function loadSpeakerAliases(): SpeakerAliases {
+  try {
+    const raw = window.localStorage.getItem(SPEAKER_ALIASES_KEY);
+    return raw ? JSON.parse(raw) as SpeakerAliases : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSpeakerAliases(aliases: SpeakerAliases) {
+  try {
+    window.localStorage.setItem(SPEAKER_ALIASES_KEY, JSON.stringify(aliases));
+  } catch {
+    // Local storage may be unavailable in private browsing; the in-memory name still works.
+  }
 }
 
 function errorMessage(err: unknown) {

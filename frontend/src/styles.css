@@ -406,8 +406,14 @@ button.ghost:disabled {
 }
 
 .speakerTag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 72px;
+  width: auto;
+  min-height: auto;
   padding: 1px 8px;
+  border: 0;
   border-radius: 999px;
   background: #ecfdf3;
   color: #067647;
@@ -416,6 +422,17 @@ button.ghost:disabled {
   line-height: 1.5;
   text-align: center;
   white-space: nowrap;
+}
+
+.speakerTag:hover {
+  background: #dcfae6;
+  color: #05603a;
+}
+
+.speakerTag:disabled {
+  background: #f2f4f7;
+  color: #667085;
+  cursor: default;
 }
 
 .transcriptStream em {

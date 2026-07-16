@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Eraser, Loader2, Mic2, Radio, Square } from 'lucide-react';
 import { downloadTextFile, type DownloadFormat } from '../textDownloads';
+import { apiUrl } from '../api';
 
 export type LiveApiSettings = {
   asrProvider: string;
@@ -56,13 +57,14 @@ export function LiveTranscriptionPanel({ settings }: { settings: LiveApiSettings
   const analyserRef = useRef<AnalyserNode | null>(null);
   const startTimeRef = useRef(0);
   const sessionIdRef = useRef('');
+  const runIdRef = useRef(0);
   const sequenceRef = useRef(0);
 
   const transcriptText = useMemo(
     () => segments
       .filter((segment) => segment.status === 'done' && segment.text.trim())
       .sort((left, right) => left.sequence - right.sequence)
-      .map((segment) => `${speakerDisplayName(segment.speakerLabel, speakerAliases)}：${segment.text.trim()}`)
+      .map((segment) => `${speakerDisplayName(segment.speakerLabel || fallbackSpeakerLabel(segment.sequence), speakerAliases)}：${segment.text.trim()}`)
       .join('\n'),
     [segments, speakerAliases]
   );
@@ -89,6 +91,7 @@ export function LiveTranscriptionPanel({ settings }: { settings: LiveApiSettings
       });
       streamRef.current = stream;
       recordingRef.current = true;
+      runIdRef.current += 1;
       sessionIdRef.current = createSessionId();
       sequenceRef.current = 0;
       startTimeRef.current = Date.now();
@@ -108,7 +111,9 @@ export function LiveTranscriptionPanel({ settings }: { settings: LiveApiSettings
 
   function stopRecording() {
     recordingRef.current = false;
+    runIdRef.current += 1;
     setRecording(false);
+    setPendingCount(0);
     stopRecorder();
     cleanupInput();
   }
@@ -189,8 +194,9 @@ export function LiveTranscriptionPanel({ settings }: { settings: LiveApiSettings
       const blob = new Blob(chunks, { type: chunkType });
       if (blob.size > 0) {
         const sequence = sequenceRef.current;
+        const runId = runIdRef.current;
         sequenceRef.current += 1;
-        void transcribeSegment(blob, sequence, chunkType);
+        void transcribeSegment(blob, sequence, chunkType, runId, sessionIdRef.current);
       }
       if (recordingRef.current) {
         startNextSegment();
@@ -205,7 +211,10 @@ export function LiveTranscriptionPanel({ settings }: { settings: LiveApiSettings
     }, LIVE_CHUNK_MS);
   }
 
-  async function transcribeSegment(blob: Blob, sequence: number, mimeType: string) {
+  async function transcribeSegment(blob: Blob, sequence: number, mimeType: string, runId: number, sessionId: string) {
+    if (runId !== runIdRef.current) {
+      return;
+    }
     setPendingCount((count) => count + 1);
     setSegments((current) => upsertSegment(current, {
       sequence,
@@ -216,7 +225,7 @@ export function LiveTranscriptionPanel({ settings }: { settings: LiveApiSettings
 
     const form = new FormData();
     form.append('file', blob, `live-${sequence}.${extensionForMimeType(mimeType)}`);
-    form.append('session_id', sessionIdRef.current);
+    form.append('session_id', sessionId);
     form.append('sequence', String(sequence));
     form.append('asr_provider', settings.asrProvider.trim());
     form.append('asr_api_key', settings.asrApiKey.trim());
@@ -234,24 +243,35 @@ export function LiveTranscriptionPanel({ settings }: { settings: LiveApiSettings
     form.append('llm_model', settings.llmModel.trim());
 
     try {
-      const response = await fetch('/api/live/transcribe', {
+      const response = await fetch(apiUrl('/api/live/transcribe'), {
         method: 'POST',
         body: form,
       });
       const payload = await response.json();
+      if (runId !== runIdRef.current || sessionId !== sessionIdRef.current) {
+        return;
+      }
       if (!response.ok) {
         throw new Error(payload.detail || '实时转写失败');
       }
+      const text = String(payload.text || '').trim();
+      if (!text) {
+        setSegments((current) => current.filter((segment) => segment.sequence !== sequence));
+        return;
+      }
       setSegments((current) => upsertSegment(current, {
         sequence,
-        text: String(payload.text || ''),
+        text,
         duration: Number(payload.duration || 0),
         status: 'done',
         optimized: Boolean(payload.optimized),
-        speakerLabel: String(payload.speaker_label || ''),
+        speakerLabel: normalizeSpeakerLabel(payload.speaker_label, sequence),
         speakerConfidence: Number(payload.speaker_confidence || 0),
       }));
     } catch (err) {
+      if (runId !== runIdRef.current || sessionId !== sessionIdRef.current) {
+        return;
+      }
       setSegments((current) => upsertSegment(current, {
         sequence,
         text: '',
@@ -260,7 +280,9 @@ export function LiveTranscriptionPanel({ settings }: { settings: LiveApiSettings
         error: errorMessage(err),
       }));
     } finally {
-      setPendingCount((count) => Math.max(0, count - 1));
+      if (runId === runIdRef.current && sessionId === sessionIdRef.current) {
+        setPendingCount((count) => Math.max(0, count - 1));
+      }
     }
   }
 
@@ -389,10 +411,9 @@ export function LiveTranscriptionPanel({ settings }: { settings: LiveApiSettings
                     type="button"
                     className="speakerTag"
                     title={speakerTitle(segment, speakerAliases)}
-                    disabled={!segment.speakerLabel}
-                    onClick={() => renameSpeaker(segment.speakerLabel)}
+                    onClick={() => renameSpeaker(segment.speakerLabel || fallbackSpeakerLabel(segment.sequence))}
                   >
-                    {speakerDisplayName(segment.speakerLabel, speakerAliases)}
+                    {speakerDisplayName(segment.speakerLabel || fallbackSpeakerLabel(segment.sequence), speakerAliases)}
                   </button>
                   <em className={segment.optimized ? '' : 'empty'}>{segment.optimized ? 'AI' : ''}</em>
                   {segment.status === 'pending' && <span><Loader2 className="spin" size={14} /> 转写中...</span>}
@@ -504,7 +525,7 @@ function speakerDisplayName(label: string | undefined, aliases: SpeakerAliases) 
 
 function speakerTitle(segment: LiveSegment, aliases: SpeakerAliases) {
   if (!segment.speakerLabel) {
-    return '等待音色识别';
+    return `${fallbackSpeakerLabel(segment.sequence)}，后端暂未返回稳定音色标签`;
   }
   const confidence = Math.round((segment.speakerConfidence || 0) * 100);
   const displayName = speakerDisplayName(segment.speakerLabel, aliases);
@@ -528,6 +549,19 @@ function saveSpeakerAliases(aliases: SpeakerAliases) {
   } catch {
     // Local storage may be unavailable in private browsing; the in-memory name still works.
   }
+}
+
+function normalizeSpeakerLabel(value: unknown, sequence: number) {
+  const label = String(value || '').trim();
+  if (!label || label === '未识别') {
+    return fallbackSpeakerLabel(sequence);
+  }
+  return label;
+}
+
+function fallbackSpeakerLabel(sequence: number) {
+  const index = Math.max(0, sequence % 26);
+  return `说话人 ${String.fromCharCode('A'.charCodeAt(0) + index)}`;
 }
 
 function errorMessage(err: unknown) {

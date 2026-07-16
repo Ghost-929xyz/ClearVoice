@@ -13,9 +13,9 @@ class EnhancementError(RuntimeError):
     pass
 
 
-MIN_VOICE_PRESERVE_MIX = 0.16
-MAX_VOICE_PRESERVE_MIX = 0.42
-MIN_RMS_RATIO = 0.55
+MIN_VOICE_PRESERVE_MIX = 0.04
+MAX_VOICE_PRESERVE_MIX = 0.18
+MIN_RMS_RATIO = 0.35
 
 
 def enhance_speech_file(input_wav: Path, output_wav: Path, atten_lim: int = 20) -> None:
@@ -125,7 +125,7 @@ def _preserve_voice_energy(original: np.ndarray, enhanced: np.ndarray, atten_lim
         return enhanced
 
     strength = max(0, min(100, atten_lim)) / 100.0
-    dry_mix = MIN_VOICE_PRESERVE_MIX + (MAX_VOICE_PRESERVE_MIX - MIN_VOICE_PRESERVE_MIX) * strength
+    dry_mix = MAX_VOICE_PRESERVE_MIX - (MAX_VOICE_PRESERVE_MIX - MIN_VOICE_PRESERVE_MIX) * strength
     if enhanced_rms < original_rms * MIN_RMS_RATIO:
         dry_mix = max(dry_mix, MAX_VOICE_PRESERVE_MIX)
 

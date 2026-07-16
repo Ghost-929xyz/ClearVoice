@@ -7,6 +7,7 @@ set "FRONTEND_DIR=%ROOT%frontend"
 set "BACKEND_PY=%BACKEND_DIR%\.venv\Scripts\python.exe"
 set "FRONTEND_URL=http://localhost:5173"
 set "BACKEND_URL=http://127.0.0.1:8000/api/health"
+set "KMP_DUPLICATE_LIB_OK=TRUE"
 
 if /I "%~1"=="backend" goto run_backend
 if /I "%~1"=="frontend" goto run_frontend
@@ -61,7 +62,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-"%BACKEND_PY%" -c "import fastapi, uvicorn, pydantic_settings, soundfile, openai, df, torch, torchaudio" >nul 2>nul
+"%BACKEND_PY%" -c "import fastapi, uvicorn, pydantic_settings, soundfile, openai, df, torch, torchaudio, torchaudio.backend" >nul 2>nul
 if errorlevel 1 (
   echo Installing backend dependencies...
   "%BACKEND_PY%" -m pip install -U pip setuptools

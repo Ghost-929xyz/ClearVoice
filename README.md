@@ -112,6 +112,43 @@ npm run dev
 
 访问 `http://localhost:5173`。
 
+### 桌面版（Electron）
+
+项目已提供 Electron + Python backend 桌面壳，保留现有 React 前端和 FastAPI 后端。
+
+首次运行建议先执行一次普通启动脚本，确保后端虚拟环境和依赖已安装：
+
+```powershell
+.\start_clearvoice.bat
+```
+
+然后启动桌面版：
+
+```powershell
+.\start_clearvoice_desktop.bat
+```
+
+桌面版会自动：
+
+- 构建 `frontend/dist`
+- 启动本地 FastAPI backend
+- 打开 Electron 桌面窗口
+
+也可以手动运行：
+
+```powershell
+cd desktop
+npm install
+npm run start
+```
+
+如需生成安装包或绿色版：
+
+```powershell
+cd desktop
+npm run dist
+```
+
 ---
 
 ## ffmpeg 安装说明

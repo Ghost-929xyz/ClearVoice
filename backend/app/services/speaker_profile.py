@@ -7,8 +7,8 @@ import numpy as np
 import soundfile as sf
 
 
-MAX_SPEAKERS_PER_SESSION = 8
-SPEAKER_DISTANCE_THRESHOLD = 0.24
+MAX_SPEAKERS_PER_SESSION = 2
+SPEAKER_DISTANCE_THRESHOLD = 0.34
 FRAME_MS = 40
 HOP_MS = 20
 
@@ -27,19 +27,24 @@ def identify_dominant_speaker(path: Path, session_id: str) -> dict:
     audio, sample_rate = sf.read(path, dtype="float32")
     if audio.ndim > 1:
         audio = audio.mean(axis=1)
+    profiles = _SESSION_PROFILES.setdefault(session_id, [])
     feature, voice_activity = _voice_feature(audio, sample_rate)
     if feature is None:
-        return {
-            "speaker_label": "未识别",
-            "speaker_confidence": 0.0,
-            "voice_activity": round(voice_activity, 3),
-        }
+        if profiles:
+            return _speaker_result(profiles[-1].label, 0.2, voice_activity)
+        profile = SpeakerProfile(label=_speaker_label(0), centroid=np.zeros(4, dtype="float32"), samples=0)
+        profiles.append(profile)
+        return _speaker_result(profile.label, 0.2, voice_activity)
 
-    profiles = _SESSION_PROFILES.setdefault(session_id, [])
     if not profiles:
         profile = SpeakerProfile(label=_speaker_label(0), centroid=feature)
         profiles.append(profile)
         return _speaker_result(profile.label, 0.68, voice_activity)
+
+    if profiles[-1].samples == 0:
+        profiles[-1].centroid = feature
+        profiles[-1].samples = 1
+        return _speaker_result(profiles[-1].label, 0.68, voice_activity)
 
     distances = [float(np.linalg.norm(profile.centroid - feature)) for profile in profiles]
     nearest_index = int(np.argmin(distances))

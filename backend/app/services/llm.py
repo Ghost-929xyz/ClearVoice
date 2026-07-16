@@ -1,9 +1,20 @@
 import json
+import os
 
 from openai import OpenAI
 
 from app.config import get_settings
 from app.schemas import RuntimeOpenAIConfig
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, str(default)))
+    except ValueError:
+        return default
+
+
+LLM_TIMEOUT_SECONDS = max(5, _env_int("CLEARVOICE_LLM_TIMEOUT", 30))
+LLM_MAX_TRANSCRIPT_CHARS = max(1000, _env_int("CLEARVOICE_LLM_MAX_TRANSCRIPT_CHARS", 12000))
 
 
 def summarize_transcript(text: str, runtime_config: RuntimeOpenAIConfig | None = None) -> dict:
@@ -19,16 +30,24 @@ def summarize_transcript(text: str, runtime_config: RuntimeOpenAIConfig | None =
     if not api_key or text.startswith("未配置"):
         return fallback
 
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    summary_text = _trim_transcript_for_summary(text)
     prompt = f"""
 请基于以下转写文本输出严格 JSON，不要包含 Markdown。字段包括 summary、keywords、action_items。
-文本：{text}
+文本：{summary_text}
 """.strip()
-    response = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.2,
-    )
+    try:
+        client = OpenAI(api_key=api_key, base_url=base_url, timeout=LLM_TIMEOUT_SECONDS)
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+        )
+    except Exception as exc:
+        return {
+            "summary": f"转写已完成，但摘要生成失败或超时：{exc}",
+            "keywords": [],
+            "action_items": [],
+        }
     content = response.choices[0].message.content or "{}"
     try:
         data = json.loads(content)
@@ -39,6 +58,13 @@ def summarize_transcript(text: str, runtime_config: RuntimeOpenAIConfig | None =
         "keywords": [str(item) for item in data.get("keywords", [])],
         "action_items": [str(item) for item in data.get("action_items", [])],
     }
+
+
+def _trim_transcript_for_summary(text: str) -> str:
+    cleaned = text.strip()
+    if len(cleaned) <= LLM_MAX_TRANSCRIPT_CHARS:
+        return cleaned
+    return cleaned[:LLM_MAX_TRANSCRIPT_CHARS] + "\n\n[后续转写文本因长度过长已截断，摘要基于前半部分生成。]"
 
 
 def refine_live_transcript(text: str, topic: str | None = None, runtime_config: RuntimeOpenAIConfig | None = None) -> str:

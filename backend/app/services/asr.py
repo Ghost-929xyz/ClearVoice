@@ -3,6 +3,7 @@ import concurrent.futures
 import hashlib
 import hmac
 import json
+import os
 import time
 import wave
 from datetime import datetime, timezone
@@ -26,6 +27,9 @@ except ImportError:
 
 from app.config import get_settings
 from app.schemas import RuntimeOpenAIConfig
+
+
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 
 OPENAI_AUDIO_PROVIDERS = {
@@ -72,13 +76,14 @@ PLANNED_ASR_PROVIDERS = {
 
 _T2S_CONVERTER = OpenCC("t2s") if OpenCC else None
 ASR_TIMEOUT_SECONDS = 120
+DASHSCOPE_FUN_ASR_TIMEOUT_SECONDS = int(os.environ.get("CLEARVOICE_DASHSCOPE_ASR_TIMEOUT", "300"))
 
 
 def transcribe_audio(path: Path, runtime_config: RuntimeOpenAIConfig | None = None) -> str:
     settings = get_settings()
     provider = ((runtime_config.asr_provider if runtime_config else None) or "openai").strip()
     if provider == "local-whisper":
-        model = (runtime_config.asr_model if runtime_config else None) or "medium"
+        model = (runtime_config.asr_model if runtime_config else None) or "small"
         return _run_with_timeout(
             lambda: _to_simplified_chinese(_transcribe_with_faster_whisper(path, model)),
             "本地 faster-whisper",
@@ -99,6 +104,7 @@ def transcribe_audio(path: Path, runtime_config: RuntimeOpenAIConfig | None = No
         return _run_with_timeout(
             lambda: _to_simplified_chinese(_transcribe_with_dashscope_fun_asr(path, api_key, base_url, model)),
             "阿里 Fun-ASR",
+            timeout_seconds=DASHSCOPE_FUN_ASR_TIMEOUT_SECONDS,
         )
 
     if provider in PLANNED_ASR_PROVIDERS:
@@ -133,15 +139,15 @@ def _to_simplified_chinese(text: str) -> str:
     return _T2S_CONVERTER.convert(text)
 
 
-def _run_with_timeout(action, label: str) -> str:
+def _run_with_timeout(action, label: str, timeout_seconds: int = ASR_TIMEOUT_SECONDS) -> str:
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     future = executor.submit(action)
     try:
-        return future.result(timeout=ASR_TIMEOUT_SECONDS)
+        return future.result(timeout=timeout_seconds)
     except concurrent.futures.TimeoutError:
         future.cancel()
         executor.shutdown(wait=False, cancel_futures=True)
-        return f"{label} 转写超时：超过 {ASR_TIMEOUT_SECONDS} 秒未完成。建议先使用更短音频，或改用分段/长音频 ASR。"
+        return f"{label} 转写超时：超过 {timeout_seconds} 秒未完成。建议先使用更短音频，或改用分段/长音频 ASR。"
     except Exception as exc:
         return f"{label} 转写失败：{exc}"
     finally:
@@ -304,7 +310,7 @@ def _transcribe_with_dashscope_fun_asr(path: Path, api_key: str, base_url: str, 
     )
 
     try:
-        with request.urlopen(http_request, timeout=ASR_TIMEOUT_SECONDS) as response:
+        with request.urlopen(http_request, timeout=DASHSCOPE_FUN_ASR_TIMEOUT_SECONDS) as response:
             result = json.loads(response.read().decode("utf-8"))
     except error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
@@ -314,7 +320,7 @@ def _transcribe_with_dashscope_fun_asr(path: Path, api_key: str, base_url: str, 
     except error.URLError as exc:
         raise RuntimeError(f"阿里 Fun-ASR 请求失败：{exc.reason}") from exc
     except TimeoutError as exc:
-        raise RuntimeError("阿里 Fun-ASR 请求超时，请稍后重试或换一段更短的音频。") from exc
+        raise RuntimeError(f"阿里 Fun-ASR 请求超时：超过 {DASHSCOPE_FUN_ASR_TIMEOUT_SECONDS} 秒未返回结果，请稍后重试或换一段更短的音频。") from exc
 
     text = _extract_dashscope_fun_asr_text(result)
     if not text:
@@ -333,13 +339,17 @@ def _normalize_dashscope_fun_asr_model(model_name: str) -> str:
 
 
 def _dashscope_has_no_words(detail: str) -> bool:
+    if "ASR_RESPONSE_HAVE_NO_WORDS" in detail:
+        return True
     try:
         payload = json.loads(detail)
     except json.JSONDecodeError:
-        return "ASR_RESPONSE_HAVE_NO_WORDS" in detail
+        return False
     if not isinstance(payload, dict):
         return False
-    return payload.get("code") == "ASR_RESPONSE_HAVE_NO_WORDS" or payload.get("message") == "ASR_RESPONSE_HAVE_NO_WORDS"
+    code = str(payload.get("code") or "")
+    message = str(payload.get("message") or "")
+    return "ASR_RESPONSE_HAVE_NO_WORDS" in code or "ASR_RESPONSE_HAVE_NO_WORDS" in message
 
 
 def _dashscope_fun_asr_generation_url(base_url: str) -> str:
@@ -416,11 +426,6 @@ def _transcribe_with_faster_whisper(path: Path, model_name: str) -> str:
 
 
 def _select_runtime() -> tuple[str, str]:
-    try:
-        import ctranslate2
-
-        if ctranslate2.get_cuda_device_count() > 0:
-            return "cuda", "float16"
-    except Exception:
-        pass
+    if os.environ.get("CLEARVOICE_WHISPER_DEVICE", "cpu").lower() == "cuda":
+        return "cuda", "float16"
     return "cpu", "int8"

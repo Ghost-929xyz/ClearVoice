@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Activity, Download, FileAudio, Loader2, Settings2, Sparkles, Upload, X } from 'lucide-react';
 import { LiveTranscriptionPanel } from './live/LiveTranscriptionPanel';
+import { apiUrl } from './api';
 import { downloadTextFile, type DownloadFormat } from './textDownloads';
 import './styles.css';
 
@@ -83,7 +84,7 @@ const asrProviders: AsrProviderOption[] = [
     value: 'local-whisper',
     label: 'local-whisper',
     baseUrl: '',
-    model: 'medium',
+    model: 'small',
     note: '本地 faster-whisper，ASR Key 可留空。'
   },
   {
@@ -127,7 +128,7 @@ const defaultSettings: ApiSettings = {
   asrProvider: 'local-whisper',
   asrApiKey: '',
   asrBaseUrl: 'https://api.openai.com/v1',
-  asrModel: 'medium',
+  asrModel: 'small',
   xunfeiAppId: '',
   xunfeiApiKey: '',
   xunfeiApiSecret: '',
@@ -159,6 +160,19 @@ function workflowLabel(settings: ApiSettings) {
     settings.enhanceAudio && settings.transcribeEnhanced ? '增强' : '',
   ].filter(Boolean);
   return targets.length > 0 ? targets.join('+') : '不转写';
+}
+
+function loadSavedSettings(): ApiSettings {
+  const raw = window.localStorage.getItem(SETTINGS_KEY);
+  if (!raw) {
+    return defaultSettings;
+  }
+  try {
+    return normalizeStoredSettings({ ...defaultSettings, ...JSON.parse(raw) });
+  } catch {
+    window.localStorage.removeItem(SETTINGS_KEY);
+    return defaultSettings;
+  }
 }
 
 function progressFromPercent(percent: number, asrProvider: string): ProgressState {
@@ -278,30 +292,32 @@ function App() {
       setError('请先选择一段音频或视频文件');
       return;
     }
+    const activeSettings = loadSavedSettings();
+    setSettings(activeSettings);
     setLoading(true);
     setError(null);
     setResult(null);
-    setProgress(progressFromPercent(4, settings.asrProvider));
+    setProgress(progressFromPercent(4, activeSettings.asrProvider));
 
     const form = new FormData();
     form.append('file', file);
-    form.append('asr_provider', settings.asrProvider.trim());
-    form.append('asr_api_key', settings.asrApiKey.trim());
-    form.append('asr_base_url', settings.asrBaseUrl.trim());
-    form.append('asr_model', settings.asrModel.trim());
-    form.append('xunfei_app_id', settings.xunfeiAppId.trim());
-    form.append('xunfei_api_key', settings.xunfeiApiKey.trim());
-    form.append('xunfei_api_secret', settings.xunfeiApiSecret.trim());
-    form.append('atten_lim', String(settings.attenLim));
-    form.append('enhance_audio', String(settings.enhanceAudio));
-    form.append('transcribe_original', String(settings.transcribeOriginal));
-    form.append('transcribe_enhanced', String(settings.transcribeEnhanced));
-    form.append('llm_api_key', settings.llmApiKey.trim());
-    form.append('llm_base_url', settings.llmBaseUrl.trim());
-    form.append('llm_model', settings.llmModel.trim());
+    form.append('asr_provider', activeSettings.asrProvider.trim());
+    form.append('asr_api_key', activeSettings.asrApiKey.trim());
+    form.append('asr_base_url', activeSettings.asrBaseUrl.trim());
+    form.append('asr_model', activeSettings.asrModel.trim());
+    form.append('xunfei_app_id', activeSettings.xunfeiAppId.trim());
+    form.append('xunfei_api_key', activeSettings.xunfeiApiKey.trim());
+    form.append('xunfei_api_secret', activeSettings.xunfeiApiSecret.trim());
+    form.append('atten_lim', String(activeSettings.attenLim));
+    form.append('enhance_audio', String(activeSettings.enhanceAudio));
+    form.append('transcribe_original', String(activeSettings.transcribeOriginal));
+    form.append('transcribe_enhanced', String(activeSettings.transcribeEnhanced));
+    form.append('llm_api_key', activeSettings.llmApiKey.trim());
+    form.append('llm_base_url', activeSettings.llmBaseUrl.trim());
+    form.append('llm_model', activeSettings.llmModel.trim());
 
     try {
-      const response = await fetch('/api/audio/process', {
+      const response = await fetch(apiUrl('/api/audio/process'), {
         method: 'POST',
         body: form
       });
@@ -309,7 +325,7 @@ function App() {
       if (!response.ok) {
         throw new Error(payload.detail || '处理失败');
       }
-      setProgress(progressFromPercent(100, settings.asrProvider));
+      setProgress(progressFromPercent(100, activeSettings.asrProvider));
       setResult(payload);
     } catch (err) {
       setProgress(null);
@@ -447,7 +463,7 @@ function SettingsPanel({
   }
 
   const selectedAsrProvider = asrProviders.find((item) => item.value === draft.asrProvider);
-  const savedAsrProvider = asrProviders.find((item) => item.value === settings.asrProvider);
+  const savedAsrProvider = asrProviders.find((item) => item.value === draft.asrProvider);
 
   return (
     <div className="configEntry">
@@ -772,7 +788,7 @@ function isSkippedOriginalTranscript(text: string) {
 }
 
 function withCache(url: string, taskId: string) {
-  return `${url}?t=${taskId}`;
+  return `${apiUrl(url)}?t=${taskId}`;
 }
 
 function formatBytes(bytes: number) {

@@ -19,6 +19,13 @@ async def transcribe_live_audio(
     xunfei_app_id: str | None = Form(default=None),
     xunfei_api_key: str | None = Form(default=None),
     xunfei_api_secret: str | None = Form(default=None),
+    live_enhance: bool = Form(default=False),
+    atten_lim: int = Form(default=20),
+    live_llm_optimize: bool = Form(default=False),
+    live_topic: str | None = Form(default=None),
+    llm_api_key: str | None = Form(default=None),
+    llm_base_url: str | None = Form(default=None),
+    llm_model: str | None = Form(default=None),
 ) -> dict:
     if not file.content_type or not file.content_type.startswith(("audio/", "video/", "application/octet-stream")):
         raise HTTPException(status_code=400, detail="请上传录音音频片段")
@@ -31,6 +38,10 @@ async def transcribe_live_audio(
         xunfei_app_id=_clean_form_value(xunfei_app_id),
         xunfei_api_key=_clean_form_value(xunfei_api_key),
         xunfei_api_secret=_clean_form_value(xunfei_api_secret),
+        llm_api_key=_clean_form_value(llm_api_key),
+        llm_base_url=_clean_form_value(llm_base_url),
+        llm_model=_clean_form_value(llm_model),
+        atten_lim=max(0, min(100, atten_lim)),
     )
 
     try:
@@ -39,6 +50,9 @@ async def transcribe_live_audio(
             runtime_config=runtime_config,
             session_id=_clean_form_value(session_id),
             sequence=sequence,
+            enhance=live_enhance,
+            llm_optimize=live_llm_optimize,
+            topic=_clean_form_value(live_topic),
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=500, detail="未找到 ffmpeg，无法转码实时录音片段") from exc

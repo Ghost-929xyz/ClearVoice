@@ -42,7 +42,9 @@ async def process_audio(
     xunfei_api_key: str | None = Form(default=None),
     xunfei_api_secret: str | None = Form(default=None),
     atten_lim: int = Form(default=20),
+    enhance_audio: bool = Form(default=True),
     transcribe_original: bool = Form(default=False),
+    transcribe_enhanced: bool = Form(default=True),
 ) -> ProcessResult:
     if not file.content_type or not file.content_type.startswith(("audio/", "video/", "application/octet-stream")):
         raise HTTPException(status_code=400, detail="请上传音频或视频文件")
@@ -59,7 +61,9 @@ async def process_audio(
             xunfei_api_key=_clean_form_value(xunfei_api_key),
             xunfei_api_secret=_clean_form_value(xunfei_api_secret),
             atten_lim=max(0, min(100, atten_lim)),
+            enhance_audio=enhance_audio,
             transcribe_original=transcribe_original,
+            transcribe_enhanced=transcribe_enhanced,
         )
         return await process_upload(file, runtime_config)
     except FileNotFoundError as exc:

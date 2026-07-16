@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Activity, ChevronDown, ChevronUp, Download, FileAudio, Loader2, Mic2, Settings2, Sparkles, Upload } from 'lucide-react';
+import { Activity, Download, FileAudio, Loader2, Settings2, Sparkles, Upload, X } from 'lucide-react';
 import { LiveTranscriptionPanel } from './live/LiveTranscriptionPanel';
 import { downloadTextFile, type DownloadFormat } from './textDownloads';
 import './styles.css';
@@ -55,7 +55,9 @@ type ApiSettings = {
   xunfeiApiKey: string;
   xunfeiApiSecret: string;
   attenLim: number;
+  enhanceAudio: boolean;
   transcribeOriginal: boolean;
+  transcribeEnhanced: boolean;
   llmApiKey: string;
   llmBaseUrl: string;
   llmModel: string;
@@ -113,17 +115,13 @@ const asrProviders: AsrProviderOption[] = [
     model: 'fun-asr-flash-2026-06-15',
     note: '阿里百炼 Fun-ASR Flash，同步识别本地上传音频。只需填写 API Key、Base URL、Model。'
   },
-  { value: 'dashscope-qwen-audio', label: '阿里千问音频识别预留', baseUrl: '', model: 'qwen-audio-asr', note: '阿里录音文件识别-千问，需要后端接入 DashScope 千问音频接口。' },
   {
     value: 'xunfei',
     label: '讯飞 IAT',
     baseUrl: '',
     model: 'iat',
     note: '讯飞在线语音听写，填写 App ID、API Key、API Secret 三项即可调用。'
-  },
-  { value: 'volcengine', label: '火山预留', baseUrl: '', model: 'bigmodel', note: '火山引擎需要专用签名/任务接口。' },
-  { value: 'tencent', label: '腾讯云预留', baseUrl: '', model: '16k_zh', note: '腾讯云需要 SDK/签名适配。' },
-  { value: 'baidu', label: '百度云预留', baseUrl: '', model: 'zh', note: '百度云需要 OAuth/REST 适配。' }
+  }
 ];
 const defaultSettings: ApiSettings = {
   asrProvider: 'local-whisper',
@@ -134,17 +132,33 @@ const defaultSettings: ApiSettings = {
   xunfeiApiKey: '',
   xunfeiApiSecret: '',
   attenLim: 20,
+  enhanceAudio: true,
   transcribeOriginal: false,
+  transcribeEnhanced: true,
   llmApiKey: '',
   llmBaseUrl: 'https://api.openai.com/v1',
   llmModel: 'gpt-4o-mini'
 };
 
-function restoreFunAsrDefault(settings: ApiSettings): ApiSettings {
+function normalizeStoredSettings(settings: ApiSettings): ApiSettings {
+  if (!asrProviders.some((provider) => provider.value === settings.asrProvider)) {
+    return defaultSettings;
+  }
+  if (!settings.enhanceAudio && settings.transcribeEnhanced) {
+    return { ...settings, transcribeEnhanced: false };
+  }
   if (settings.asrProvider === 'dashscope-fun-asr' && settings.asrModel === 'qwen2-audio-instruct') {
     return { ...settings, asrModel: 'fun-asr-flash-2026-06-15' };
   }
   return settings;
+}
+
+function workflowLabel(settings: ApiSettings) {
+  const targets = [
+    settings.transcribeOriginal ? '原音' : '',
+    settings.enhanceAudio && settings.transcribeEnhanced ? '增强' : '',
+  ].filter(Boolean);
+  return targets.length > 0 ? targets.join('+') : '不转写';
 }
 
 function progressFromPercent(percent: number, asrProvider: string): ProgressState {
@@ -155,7 +169,7 @@ function progressFromPercent(percent: number, asrProvider: string): ProgressStat
     { percent: 22, label: '转码预处理', detail: '正在统一音频格式、采样率和声道。' },
     { percent: 40, label: '语音增强', detail: '正在降低噪声并生成增强音频。' },
     { percent: 56, label: '噪声分析', detail: '正在估计噪声类型、SNR 和音量指标。' },
-    { percent: 74, label: '语音转写', detail: `正在调用 ${asrLabel} 识别增强后的音频。` },
+    { percent: 74, label: '语音转写', detail: `正在调用 ${asrLabel} 按当前流程执行转写。` },
     { percent: 88, label: '摘要生成', detail: '正在整理转写文本并生成摘要。' },
     { percent: 100, label: '处理完成', detail: '结果已经生成，正在展示。' }
   ];
@@ -179,7 +193,7 @@ function App() {
       return;
     }
     try {
-      setSettings(restoreFunAsrDefault({ ...defaultSettings, ...JSON.parse(raw) }));
+      setSettings(normalizeStoredSettings({ ...defaultSettings, ...JSON.parse(raw) }));
     } catch {
       window.localStorage.removeItem(SETTINGS_KEY);
     }
@@ -279,7 +293,9 @@ function App() {
     form.append('xunfei_api_key', settings.xunfeiApiKey.trim());
     form.append('xunfei_api_secret', settings.xunfeiApiSecret.trim());
     form.append('atten_lim', String(settings.attenLim));
+    form.append('enhance_audio', String(settings.enhanceAudio));
     form.append('transcribe_original', String(settings.transcribeOriginal));
+    form.append('transcribe_enhanced', String(settings.transcribeEnhanced));
     form.append('llm_api_key', settings.llmApiKey.trim());
     form.append('llm_base_url', settings.llmBaseUrl.trim());
     form.append('llm_model', settings.llmModel.trim());
@@ -311,9 +327,14 @@ function App() {
           <h1>智能语音增强与转写工作台</h1>
           <p className="heroText">上传课堂、会议或现场录音，获得增强音频、噪声指标、转写文本和摘要结果。</p>
         </div>
-        <div className="heroBadge">
-          <Mic2 size={34} />
-          <span>Noise-aware ASR</span>
+        <div className="heroActions">
+          <SettingsPanel
+            settings={settings}
+            open={settingsOpen}
+            onToggle={() => setSettingsOpen((open) => !open)}
+            onSave={saveSettings}
+            onClear={clearSettings}
+          />
         </div>
       </header>
 
@@ -357,14 +378,6 @@ function App() {
 
           <LiveTranscriptionPanel settings={settings} />
         </div>
-
-        <SettingsPanel
-          settings={settings}
-          open={settingsOpen}
-          onToggle={() => setSettingsOpen((open) => !open)}
-          onSave={saveSettings}
-          onClear={clearSettings}
-        />
       </section>
 
       {result && <ResultView result={result} />}
@@ -422,6 +435,14 @@ function SettingsPanel({
       });
       return;
     }
+    if (key === 'enhanceAudio' && value === false) {
+      applyDraft({
+        ...draft,
+        enhanceAudio: false,
+        transcribeEnhanced: false
+      });
+      return;
+    }
     applyDraft({ ...draft, [key]: value });
   }
 
@@ -429,133 +450,179 @@ function SettingsPanel({
   const savedAsrProvider = asrProviders.find((item) => item.value === settings.asrProvider);
 
   return (
-    <aside className={open ? 'settingsCard configPanel open' : 'settingsCard configPanel'}>
-      <button type="button" className="configToggle" onClick={onToggle} aria-expanded={open}>
-        <span>
+    <div className="configEntry">
+      <button type="button" className="configButton" onClick={onToggle} aria-expanded={open}>
+        <span className="configButtonIcon">
           <Settings2 size={20} />
-          API 配置中心
         </span>
-        {open ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+        <span className="configButtonTitle">
+          <strong>API 配置</strong>
+        </span>
+        <span className="configButtonSummary" aria-hidden="true">
+          <i>
+            ASR
+            <b title={settings.asrModel || '未配置'}>{settings.asrModel || '未配置'}</b>
+          </i>
+          <i>
+            LLM
+            <b title={settings.llmModel || '未配置'}>{settings.llmModel || '未配置'}</b>
+          </i>
+        </span>
       </button>
 
-      <div className="configSummary">
-        <span>
-          ASR
-          <strong>{savedAsrProvider?.label ?? settings.asrProvider}</strong>
-        </span>
-        <span>
-          LLM
-          <strong>{settings.llmModel || '未配置'}</strong>
-        </span>
-        <span>
-          降噪
-          <strong>{settings.attenLim}</strong>
-        </span>
-        <span>
-          原音
-          <strong>{settings.transcribeOriginal ? '转写' : '跳过'}</strong>
-        </span>
-      </div>
-
       {open && (
-        <div className="configBody">
-          <div className="settingsHeader">
-            <span className={settings.asrProvider === 'local-whisper' || settings.asrApiKey || settings.xunfeiApiKey || settings.llmApiKey ? 'status enabled' : 'status'}>
-              {settings.asrProvider === 'local-whisper' ? '本地 ASR' : '云端 ASR'}
-            </span>
-          </div>
-
-          <div className="settingsGroupTitle">ASR 转写配置</div>
-          <div className="settingsGrid">
-            <label>
-              <span>ASR Provider</span>
-              <select value={draft.asrProvider} onChange={(event) => update('asrProvider', event.target.value)}>
-                {asrProviders.map((provider) => <option key={provider.value} value={provider.value}>{provider.label}</option>)}
-              </select>
-            </label>
-            <label>
-              <span>ASR Model</span>
-              <input value={draft.asrModel} placeholder={draft.asrProvider === 'local-whisper' ? 'medium' : 'whisper-1'} onChange={(event) => update('asrModel', event.target.value)} />
-            </label>
-            <label>
-              <span>ASR API Key</span>
-              <input type="password" value={draft.asrApiKey} placeholder="本地 ASR 可留空" onChange={(event) => update('asrApiKey', event.target.value)} />
-            </label>
-            <label>
-              <span>ASR Base URL</span>
-              <input value={draft.asrBaseUrl} placeholder="https://api.openai.com/v1" onChange={(event) => update('asrBaseUrl', event.target.value)} />
-            </label>
-          </div>
-          {draft.asrProvider === 'xunfei' && (
-            <div className="settingsGrid xunfeiGrid">
-              <label>
-                <span>讯飞 App ID</span>
-                <input value={draft.xunfeiAppId} placeholder="XUNFEI_APP_ID" onChange={(event) => update('xunfeiAppId', event.target.value)} />
-              </label>
-              <label>
-                <span>讯飞 API Key</span>
-                <input type="password" value={draft.xunfeiApiKey} placeholder="XUNFEI_API_KEY" onChange={(event) => update('xunfeiApiKey', event.target.value)} />
-              </label>
-              <label>
-                <span>讯飞 API Secret</span>
-                <input type="password" value={draft.xunfeiApiSecret} placeholder="XUNFEI_API_SECRET" onChange={(event) => update('xunfeiApiSecret', event.target.value)} />
-              </label>
+        <div className="configOverlay" role="presentation" onMouseDown={onToggle}>
+          <aside className="settingsCard configPanel" role="dialog" aria-modal="true" aria-label="API 配置中心" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="configPanelHeader">
+              <div>
+                <p className="eyebrow dark">Settings</p>
+                <h2>API 配置中心</h2>
+              </div>
+              <button type="button" className="iconButton" onClick={onToggle} aria-label="关闭 API 配置中心">
+                <X size={20} />
+              </button>
             </div>
-          )}
-          <p className="settingsHint">{selectedAsrProvider?.note}</p>
 
-          <div className="settingsGroupTitle">增强参数</div>
-          <div className="settingsGrid">
-            <label className="rangeLabel">
-              <span>降噪强度 atten_lim <strong>{draft.attenLim}</strong></span>
-              <input type="range" min={0} max={100} value={draft.attenLim} onChange={(event) => update('attenLim', Number(event.target.value))} />
-            </label>
-            <label className="toggleLabel">
-              <input type="checkbox" checked={draft.transcribeOriginal} onChange={(event) => update('transcribeOriginal', event.target.checked)} />
+            <div className="configSummary">
               <span>
-                <strong>同时转写原始音频</strong>
-                <small>开启后会多调用一次 ASR，耗时和云端费用也会增加。</small>
+                ASR
+                <strong>{savedAsrProvider?.label ?? settings.asrProvider}</strong>
               </span>
-            </label>
-          </div>
+              <span>
+                LLM
+                <strong>{settings.llmModel || '未配置'}</strong>
+              </span>
+              <span>
+                增强
+                <strong>{settings.enhanceAudio ? `启用/${settings.attenLim}` : '跳过'}</strong>
+              </span>
+              <span>
+                转写
+                <strong>{workflowLabel(settings)}</strong>
+              </span>
+            </div>
 
-          <div className="settingsGroupTitle">LLM 摘要配置</div>
-          <div className="settingsGrid">
-            <label>
-              <span>LLM API Key</span>
-              <input type="password" value={draft.llmApiKey} placeholder="sk-..." onChange={(event) => update('llmApiKey', event.target.value)} />
-            </label>
-            <label>
-              <span>LLM Base URL</span>
-              <input value={draft.llmBaseUrl} placeholder="https://api.openai.com/v1" onChange={(event) => update('llmBaseUrl', event.target.value)} />
-            </label>
-            <label>
-              <span>LLM Model</span>
-              <input value={draft.llmModel} placeholder="gpt-4o-mini" onChange={(event) => update('llmModel', event.target.value)} />
-            </label>
-          </div>
+            <div className="configBody">
+              <div className="settingsHeader">
+                <span className={settings.asrProvider === 'local-whisper' || settings.asrApiKey || settings.xunfeiApiKey || settings.llmApiKey ? 'status enabled' : 'status'}>
+                  {settings.asrProvider === 'local-whisper' ? '本地 ASR' : '云端 ASR'}
+                </span>
+              </div>
 
-          <div className="settingsActions">
-            <button type="button" className="secondary" onClick={() => onSave(draft)}>已自动应用</button>
-            <button type="button" className="ghost" onClick={onClear}>清除配置</button>
-          </div>
+              <div className="settingsGroupTitle">ASR 转写配置</div>
+              <div className="settingsGrid">
+                <label>
+                  <span>ASR Provider</span>
+                  <select value={draft.asrProvider} onChange={(event) => update('asrProvider', event.target.value)}>
+                    {asrProviders.map((provider) => <option key={provider.value} value={provider.value}>{provider.label}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span>ASR Model</span>
+                  <input value={draft.asrModel} placeholder={draft.asrProvider === 'local-whisper' ? 'medium' : 'whisper-1'} onChange={(event) => update('asrModel', event.target.value)} />
+                </label>
+                <label>
+                  <span>ASR API Key</span>
+                  <input type="password" value={draft.asrApiKey} placeholder="本地 ASR 可留空" onChange={(event) => update('asrApiKey', event.target.value)} />
+                </label>
+                <label>
+                  <span>ASR Base URL</span>
+                  <input value={draft.asrBaseUrl} placeholder="https://api.openai.com/v1" onChange={(event) => update('asrBaseUrl', event.target.value)} />
+                </label>
+              </div>
+              {draft.asrProvider === 'xunfei' && (
+                <div className="settingsGrid xunfeiGrid">
+                  <label>
+                    <span>讯飞 App ID</span>
+                    <input value={draft.xunfeiAppId} placeholder="XUNFEI_APP_ID" onChange={(event) => update('xunfeiAppId', event.target.value)} />
+                  </label>
+                  <label>
+                    <span>讯飞 API Key</span>
+                    <input type="password" value={draft.xunfeiApiKey} placeholder="XUNFEI_API_KEY" onChange={(event) => update('xunfeiApiKey', event.target.value)} />
+                  </label>
+                  <label>
+                    <span>讯飞 API Secret</span>
+                    <input type="password" value={draft.xunfeiApiSecret} placeholder="XUNFEI_API_SECRET" onChange={(event) => update('xunfeiApiSecret', event.target.value)} />
+                  </label>
+                </div>
+              )}
+              <p className="settingsHint">{selectedAsrProvider?.note}</p>
+
+              <div className="settingsGroupTitle">处理流程</div>
+              <div className="settingsGrid">
+                <label className="toggleLabel">
+                  <input type="checkbox" checked={draft.enhanceAudio} onChange={(event) => update('enhanceAudio', event.target.checked)} />
+                  <span>
+                    <strong>增强原始音频</strong>
+                    <small>开启后会生成增强音频文件，可单独下载或继续转写。</small>
+                  </span>
+                </label>
+                <label className="toggleLabel">
+                  <input type="checkbox" checked={draft.transcribeOriginal} onChange={(event) => update('transcribeOriginal', event.target.checked)} />
+                  <span>
+                    <strong>转写原始音频</strong>
+                    <small>直接对上传的原始音频执行 ASR，适合和增强后结果做对比。</small>
+                  </span>
+                </label>
+                <label className={draft.enhanceAudio ? 'toggleLabel' : 'toggleLabel disabledLabel'}>
+                  <input type="checkbox" checked={draft.transcribeEnhanced} disabled={!draft.enhanceAudio} onChange={(event) => update('transcribeEnhanced', event.target.checked)} />
+                  <span>
+                    <strong>转写增强音频</strong>
+                    <small>需要先开启增强原始音频；开启后会对增强后的音频继续 ASR。</small>
+                  </span>
+                </label>
+              </div>
+
+              <div className="settingsGroupTitle">增强参数</div>
+              <div className="settingsGrid">
+                <label className={draft.enhanceAudio ? 'rangeLabel' : 'rangeLabel disabledLabel'}>
+                  <span>降噪强度 atten_lim <strong>{draft.attenLim}</strong></span>
+                  <input type="range" min={0} max={100} value={draft.attenLim} disabled={!draft.enhanceAudio} onChange={(event) => update('attenLim', Number(event.target.value))} />
+                </label>
+              </div>
+
+              <div className="settingsGroupTitle">LLM 摘要配置</div>
+              <div className="settingsGrid">
+                <label>
+                  <span>LLM API Key</span>
+                  <input type="password" value={draft.llmApiKey} placeholder="sk-..." onChange={(event) => update('llmApiKey', event.target.value)} />
+                </label>
+                <label>
+                  <span>LLM Base URL</span>
+                  <input value={draft.llmBaseUrl} placeholder="https://api.openai.com/v1" onChange={(event) => update('llmBaseUrl', event.target.value)} />
+                </label>
+                <label>
+                  <span>LLM Model</span>
+                  <input value={draft.llmModel} placeholder="gpt-4o-mini" onChange={(event) => update('llmModel', event.target.value)} />
+                </label>
+              </div>
+
+              <div className="settingsActions">
+                <button type="button" className="secondary" onClick={() => onSave(draft)}>已自动应用</button>
+                <button type="button" className="ghost" onClick={onClear}>清除配置</button>
+              </div>
+            </div>
+          </aside>
         </div>
       )}
-    </aside>
+    </div>
   );
 }
 
 function ResultView({ result }: { result: ProcessResult }) {
   const originalUrl = withCache(result.audio.original_url, result.task_id);
   const enhancedUrl = result.audio.enhanced_url ? withCache(result.audio.enhanced_url, result.task_id) : '';
+  const enhancedGenerated = Boolean(result.audio.enhanced_url);
   const rawDownloadable = result.transcription.raw_available ?? !isSkippedOriginalTranscript(result.transcription.raw_text);
-  const enhancedDownloadable = result.transcription.enhanced_available ?? true;
+  const enhancedDownloadable = result.transcription.enhanced_available ?? enhancedGenerated;
   const summaryText = formatSummaryText(result.llm);
   return (
     <section className="results">
-      <div className="grid two">
+      <div className={enhancedGenerated ? 'grid two' : 'grid'}>
         <AudioCard title="原始音频" url={originalUrl} peaks={result.audio.original_peaks} size={result.metrics.original_size_bytes} />
-        <AudioCard title="增强音频" url={enhancedUrl} peaks={result.audio.enhanced_peaks} size={result.metrics.enhanced_size_bytes} featured />
+        {enhancedGenerated && (
+          <AudioCard title="增强音频" url={enhancedUrl} peaks={result.audio.enhanced_peaks} size={result.metrics.enhanced_size_bytes} featured />
+        )}
       </div>
 
       <div className="grid four">

@@ -10,6 +10,10 @@ export type LiveApiSettings = {
   xunfeiAppId: string;
   xunfeiApiKey: string;
   xunfeiApiSecret: string;
+  attenLim: number;
+  llmApiKey: string;
+  llmBaseUrl: string;
+  llmModel: string;
 };
 
 type LiveSegment = {
@@ -18,6 +22,9 @@ type LiveSegment = {
   duration: number;
   status: 'pending' | 'done' | 'error';
   error?: string;
+  optimized?: boolean;
+  speakerLabel?: string;
+  speakerConfidence?: number;
 };
 
 const LIVE_CHUNK_MS = 7000;
@@ -29,8 +36,14 @@ export function LiveTranscriptionPanel({ settings }: { settings: LiveApiSettings
   const [segments, setSegments] = useState<LiveSegment[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [enhanceEnabled, setEnhanceEnabled] = useState(false);
+  const [llmOptimizeEnabled, setLlmOptimizeEnabled] = useState(false);
+  const [liveTopic, setLiveTopic] = useState('');
 
   const recordingRef = useRef(false);
+  const enhanceEnabledRef = useRef(false);
+  const llmOptimizeEnabledRef = useRef(false);
+  const liveTopicRef = useRef('');
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const segmentTimerRef = useRef<number | null>(null);
@@ -45,7 +58,7 @@ export function LiveTranscriptionPanel({ settings }: { settings: LiveApiSettings
     () => segments
       .filter((segment) => segment.status === 'done' && segment.text.trim())
       .sort((left, right) => left.sequence - right.sequence)
-      .map((segment) => segment.text.trim())
+      .map((segment) => `${segment.speakerLabel || '说话人 ?'}：${segment.text.trim()}`)
       .join('\n'),
     [segments]
   );
@@ -99,6 +112,21 @@ export function LiveTranscriptionPanel({ settings }: { settings: LiveApiSettings
   function clearTranscript() {
     setSegments([]);
     setError(null);
+  }
+
+  function updateEnhanceEnabled(checked: boolean) {
+    enhanceEnabledRef.current = checked;
+    setEnhanceEnabled(checked);
+  }
+
+  function updateLlmOptimizeEnabled(checked: boolean) {
+    llmOptimizeEnabledRef.current = checked;
+    setLlmOptimizeEnabled(checked);
+  }
+
+  function updateLiveTopic(value: string) {
+    liveTopicRef.current = value;
+    setLiveTopic(value);
   }
 
   function startNextSegment() {
@@ -171,6 +199,13 @@ export function LiveTranscriptionPanel({ settings }: { settings: LiveApiSettings
     form.append('xunfei_app_id', settings.xunfeiAppId.trim());
     form.append('xunfei_api_key', settings.xunfeiApiKey.trim());
     form.append('xunfei_api_secret', settings.xunfeiApiSecret.trim());
+    form.append('live_enhance', String(enhanceEnabledRef.current));
+    form.append('atten_lim', String(settings.attenLim));
+    form.append('live_llm_optimize', String(llmOptimizeEnabledRef.current));
+    form.append('live_topic', liveTopicRef.current.trim());
+    form.append('llm_api_key', settings.llmApiKey.trim());
+    form.append('llm_base_url', settings.llmBaseUrl.trim());
+    form.append('llm_model', settings.llmModel.trim());
 
     try {
       const response = await fetch('/api/live/transcribe', {
@@ -186,6 +221,9 @@ export function LiveTranscriptionPanel({ settings }: { settings: LiveApiSettings
         text: String(payload.text || ''),
         duration: Number(payload.duration || 0),
         status: 'done',
+        optimized: Boolean(payload.optimized),
+        speakerLabel: String(payload.speaker_label || ''),
+        speakerConfidence: Number(payload.speaker_confidence || 0),
       }));
     } catch (err) {
       setSegments((current) => upsertSegment(current, {
@@ -283,6 +321,33 @@ export function LiveTranscriptionPanel({ settings }: { settings: LiveApiSettings
         </div>
       </div>
 
+      <label className="liveOptionToggle">
+        <input type="checkbox" checked={enhanceEnabled} onChange={(event) => updateEnhanceEnabled(event.target.checked)} />
+        <span>
+          <strong>增强后转写</strong>
+          <small>开启后，每个录音片段会先进行语音增强，再提交给 ASR；延迟会略有增加。</small>
+        </span>
+      </label>
+
+      <div className="liveOptionGroup">
+        <label className="liveOptionToggle">
+          <input type="checkbox" checked={llmOptimizeEnabled} onChange={(event) => updateLlmOptimizeEnabled(event.target.checked)} />
+          <span>
+            <strong>大模型优化转写</strong>
+            <small>开启后会根据主题修正常见错词、断句和术语；会增加一次 LLM 调用。</small>
+          </span>
+        </label>
+        <label className="liveTopicInput">
+          <span>本次对话主题</span>
+          <input
+            value={liveTopic}
+            placeholder="例如：深度学习课程、项目例会、医学问诊..."
+            disabled={!llmOptimizeEnabled}
+            onChange={(event) => updateLiveTopic(event.target.value)}
+          />
+        </label>
+      </div>
+
       <div className="liveTranscript transcriptStream">
         <Radio size={20} />
         <div>
@@ -294,6 +359,10 @@ export function LiveTranscriptionPanel({ settings }: { settings: LiveApiSettings
               .map((segment) => (
                 <p key={segment.sequence} className={segment.status === 'error' ? 'segmentError' : ''}>
                   <small>#{segment.sequence + 1}</small>
+                  <strong className="speakerTag" title={speakerTitle(segment)}>
+                    {segment.speakerLabel || '说话人 ?'}
+                  </strong>
+                  <em className={segment.optimized ? '' : 'empty'}>{segment.optimized ? 'AI' : ''}</em>
                   {segment.status === 'pending' && <span><Loader2 className="spin" size={14} /> 转写中...</span>}
                   {segment.status === 'done' && <span>{segment.text || '未识别到有效语音'}</span>}
                   {segment.status === 'error' && <span>{segment.error}</span>}
@@ -392,6 +461,14 @@ function formatTime(seconds: number) {
 function upsertSegment(segments: LiveSegment[], next: LiveSegment) {
   const others = segments.filter((segment) => segment.sequence !== next.sequence);
   return [...others, next].sort((left, right) => left.sequence - right.sequence);
+}
+
+function speakerTitle(segment: LiveSegment) {
+  if (!segment.speakerLabel) {
+    return '等待音色识别';
+  }
+  const confidence = Math.round((segment.speakerConfidence || 0) * 100);
+  return `${segment.speakerLabel}，置信度 ${confidence}%`;
 }
 
 function errorMessage(err: unknown) {

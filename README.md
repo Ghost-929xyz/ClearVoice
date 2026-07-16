@@ -222,6 +222,10 @@ GET  /api/audio/file/{task_id}/enhanced
 | `asr_api_key` | string | ASR API Key |
 | `asr_base_url` | string | ASR Base URL |
 | `asr_model` | string | ASR 模型名 |
+| `enhance_audio` | bool | 是否生成增强音频，默认 `true` |
+| `transcribe_original` | bool | 是否转写原始音频，默认 `false` |
+| `transcribe_enhanced` | bool | 是否转写增强音频，默认 `true` |
+| `atten_lim` | int | 降噪强度，默认 `20` |
 | `llm_api_key` | string | LLM API Key |
 | `llm_base_url` | string | LLM Base URL |
 | `llm_model` | string | LLM 模型名 |

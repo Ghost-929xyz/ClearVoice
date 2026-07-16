@@ -39,3 +39,39 @@ def summarize_transcript(text: str, runtime_config: RuntimeOpenAIConfig | None =
         "keywords": [str(item) for item in data.get("keywords", [])],
         "action_items": [str(item) for item in data.get("action_items", [])],
     }
+
+
+def refine_live_transcript(text: str, topic: str | None = None, runtime_config: RuntimeOpenAIConfig | None = None) -> str:
+    cleaned = text.strip()
+    if not cleaned:
+        return ""
+
+    settings = get_settings()
+    api_key = (runtime_config.llm_api_key if runtime_config else None) or settings.openai_api_key
+    base_url = (runtime_config.llm_base_url if runtime_config else None) or settings.openai_base_url
+    model = (runtime_config.llm_model if runtime_config else None) or settings.llm_model
+    if not api_key:
+        return cleaned
+
+    topic_hint = (topic or "").strip() or "未提供"
+    prompt = f"""
+你是实时语音转写校对助手。请根据“本次对话主题”修正 ASR 片段中的明显错词、同音字、专有名词和标点断句。
+要求：
+1. 只输出修正后的片段文本，不要输出解释、JSON 或 Markdown。
+2. 不要扩写，不要编造原文中没有的信息。
+3. 如果片段已经合理，原样返回。
+
+本次对话主题：{topic_hint}
+ASR 片段：{cleaned}
+""".strip()
+    try:
+        client = OpenAI(api_key=api_key, base_url=base_url, timeout=30)
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+        )
+    except Exception:
+        return cleaned
+    content = (response.choices[0].message.content or "").strip()
+    return content or cleaned

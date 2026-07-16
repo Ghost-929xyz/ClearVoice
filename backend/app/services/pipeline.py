@@ -29,38 +29,32 @@ async def process_upload(file: UploadFile, runtime_config: RuntimeOpenAIConfig |
     enhance_result = await enhance_upload(file, runtime_config)
     settings = get_settings()
     runtime_config = runtime_config or RuntimeOpenAIConfig()
-    enhanced_wav = settings.outputs_dir / enhance_result.task_id / "enhanced.wav"
     should_run_asr = _should_run_asr(runtime_config, settings.openai_api_key)
-    raw_available = False
-    enhanced_available = should_run_asr
-    if should_run_asr:
-        raw_text = (
-            transcribe_task_audio(enhance_result.task_id, "original", runtime_config).text
-            if runtime_config.transcribe_original
-            else "已跳过原始音频转写，以减少长音频处理时间。可在配置中心开启同时转写原始音频。"
-        )
-        raw_available = runtime_config.transcribe_original
-        enhanced_text = transcribe_task_audio(enhance_result.task_id, "enhanced", runtime_config).text
+    raw_available = bool(should_run_asr and runtime_config.transcribe_original)
+    enhanced_available = bool(should_run_asr and runtime_config.enhance_audio and runtime_config.transcribe_enhanced)
+
+    if raw_available:
+        raw_text = transcribe_task_audio(enhance_result.task_id, "original", runtime_config).text
+    elif runtime_config.transcribe_original:
+        raw_text = "未配置可用 ASR，未执行原始音频转写。"
     else:
-        raw_text = _local_analysis_text(
-            "原始音频",
-            enhance_result.audio.duration,
-            enhance_result.audio.sample_rate,
-            enhance_result.metrics.snr_before,
-            enhance_result.metrics.rms_before,
-            enhance_result.noise.noise_label,
-            "未配置 OPENAI_API_KEY，因此暂未执行语音转写。",
-        )
-        enhanced_text = _local_analysis_text(
-            "增强音频",
-            duration_seconds(enhanced_wav),
-            enhance_result.audio.sample_rate,
-            enhance_result.metrics.snr_after,
-            enhance_result.metrics.rms_after,
-            enhance_result.noise.noise_label,
-            f"已生成可播放的增强音频，估计 SNR 提升 {enhance_result.metrics.snr_gain} dB，噪声抑制 {enhance_result.metrics.noise_reduction_ratio}。",
-        )
-    llm_data = summarize_transcript(enhanced_text, runtime_config)
+        raw_text = "已跳过原始音频转写。"
+
+    if not runtime_config.enhance_audio:
+        enhanced_text = "已跳过语音增强，未生成增强音频。"
+    elif enhanced_available:
+        enhanced_text = transcribe_task_audio(enhance_result.task_id, "enhanced", runtime_config).text
+    elif runtime_config.transcribe_enhanced:
+        enhanced_text = "未配置可用 ASR，未执行增强音频转写。"
+    else:
+        enhanced_text = "已生成增强音频，已跳过增强后转写。"
+
+    summary_source = _summary_source(raw_text, enhanced_text, raw_available, enhanced_available)
+    llm_data = summarize_transcript(summary_source, runtime_config) if summary_source else {
+        "summary": "未执行语音转写，暂无语义摘要。",
+        "keywords": [],
+        "action_items": [],
+    }
 
     return ProcessResult(
         task_id=enhance_result.task_id,
@@ -98,34 +92,48 @@ async def enhance_upload(file: UploadFile, runtime_config: RuntimeOpenAIConfig |
 
     audio, sample_rate = load_audio(original_wav)
     atten_lim = max(0, min(100, runtime_config.atten_lim))
-    enhance_speech_file(original_wav, enhanced_wav, atten_lim=atten_lim)
-    enhanced, _ = load_audio(enhanced_wav)
-
     noise_type, noise_label, confidence = classify_noise(audio, sample_rate)
     snr_before = estimate_snr(audio)
-    snr_after = estimate_snr(enhanced)
+    rms_before = rms(audio)
+
+    if runtime_config.enhance_audio:
+        enhance_speech_file(original_wav, enhanced_wav, atten_lim=atten_lim)
+        enhanced, _ = load_audio(enhanced_wav)
+        enhanced_url = f"/api/audio/file/{task_id}/enhanced"
+        enhanced_peaks = waveform_peaks(enhanced)
+        snr_after = estimate_snr(enhanced)
+        rms_after = rms(enhanced)
+        enhanced_size_bytes = enhanced_wav.stat().st_size
+        reduction_ratio = noise_reduction_ratio(audio, enhanced)
+    else:
+        enhanced_url = None
+        enhanced_peaks = []
+        snr_after = snr_before
+        rms_after = rms_before
+        enhanced_size_bytes = 0
+        reduction_ratio = "0%"
 
     return EnhanceResult(
         task_id=task_id,
         status="completed",
         audio=AudioInfo(
             original_url=f"/api/audio/file/{task_id}/original",
-            enhanced_url=f"/api/audio/file/{task_id}/enhanced",
+            enhanced_url=enhanced_url,
             duration=duration_seconds(original_wav),
             sample_rate=sample_rate,
             original_peaks=waveform_peaks(audio),
-            enhanced_peaks=waveform_peaks(enhanced),
+            enhanced_peaks=enhanced_peaks,
         ),
         noise=NoiseInfo(noise_type=noise_type, noise_label=noise_label, confidence=round(confidence, 2)),
         metrics=Metrics(
             snr_before=snr_before,
             snr_after=snr_after,
             snr_gain=round(snr_after - snr_before, 2),
-            noise_reduction_ratio=noise_reduction_ratio(audio, enhanced),
-            rms_before=rms(audio),
-            rms_after=rms(enhanced),
+            noise_reduction_ratio=reduction_ratio,
+            rms_before=rms_before,
+            rms_after=rms_after,
             original_size_bytes=original_wav.stat().st_size,
-            enhanced_size_bytes=enhanced_wav.stat().st_size,
+            enhanced_size_bytes=enhanced_size_bytes,
         ),
     )
 
@@ -156,6 +164,14 @@ def _should_run_asr(runtime_config: RuntimeOpenAIConfig, fallback_api_key: str |
         or runtime_config.has_asr_api_key
         or fallback_api_key
     )
+
+
+def _summary_source(raw_text: str, enhanced_text: str, raw_available: bool, enhanced_available: bool) -> str:
+    if enhanced_available and enhanced_text.strip():
+        return enhanced_text
+    if raw_available and raw_text.strip():
+        return raw_text
+    return ""
 
 
 def _local_analysis_text(

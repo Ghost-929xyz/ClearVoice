@@ -13,7 +13,9 @@ class RuntimeOpenAIConfig(BaseModel):
     xunfei_api_key: str | None = None
     xunfei_api_secret: str | None = None
     atten_lim: int = 20
+    enhance_audio: bool = True
     transcribe_original: bool = False
+    transcribe_enhanced: bool = True
 
     @property
     def has_asr_api_key(self) -> bool:

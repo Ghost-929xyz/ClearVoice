@@ -308,6 +308,8 @@ def _transcribe_with_dashscope_fun_asr(path: Path, api_key: str, base_url: str, 
             result = json.loads(response.read().decode("utf-8"))
     except error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
+        if exc.code == 400 and _dashscope_has_no_words(detail):
+            return ""
         raise RuntimeError(f"阿里 Fun-ASR 请求失败：HTTP {exc.code}，模型：{normalized_model}，详情：{detail}") from exc
     except error.URLError as exc:
         raise RuntimeError(f"阿里 Fun-ASR 请求失败：{exc.reason}") from exc
@@ -328,6 +330,16 @@ def _audio_data_uri(path: Path) -> str:
 def _normalize_dashscope_fun_asr_model(model_name: str) -> str:
     normalized = (model_name or DASHSCOPE_FUN_ASR_DEFAULT_MODEL).strip()
     return DASHSCOPE_FUN_ASR_MODEL_ALIASES.get(normalized, normalized)
+
+
+def _dashscope_has_no_words(detail: str) -> bool:
+    try:
+        payload = json.loads(detail)
+    except json.JSONDecodeError:
+        return "ASR_RESPONSE_HAVE_NO_WORDS" in detail
+    if not isinstance(payload, dict):
+        return False
+    return payload.get("code") == "ASR_RESPONSE_HAVE_NO_WORDS" or payload.get("message") == "ASR_RESPONSE_HAVE_NO_WORDS"
 
 
 def _dashscope_fun_asr_generation_url(base_url: str) -> str:

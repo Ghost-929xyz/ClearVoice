@@ -73,24 +73,16 @@ h2 {
   line-height: 1.7;
 }
 
-.heroBadge {
-  min-width: 190px;
+.heroActions {
   display: grid;
-  place-items: center;
   gap: 12px;
-  padding: 26px 20px;
-  border: 1px solid rgba(255, 255, 255, 0.34);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.13);
-  text-align: center;
-  font-weight: 900;
+  justify-items: end;
+  flex: 0 0 320px;
+  width: 320px;
+  margin-left: auto;
 }
 
 .workspaceLayout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
-  gap: 20px;
-  align-items: start;
   margin: 24px 0;
 }
 
@@ -299,6 +291,74 @@ button.ghost:disabled {
   font-size: 22px;
 }
 
+.liveOptionToggle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #dbe6f3;
+  border-radius: 8px;
+  background: #f8fbff;
+  color: #344054;
+  cursor: pointer;
+}
+
+.liveOptionToggle input {
+  width: 18px;
+  height: 18px;
+  margin: 3px 0 0;
+  accent-color: #155eef;
+}
+
+.liveOptionToggle span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.liveOptionToggle strong {
+  color: #101828;
+  font-size: 15px;
+}
+
+.liveOptionToggle small {
+  color: #667085;
+  line-height: 1.5;
+}
+
+.liveOptionGroup {
+  display: grid;
+  gap: 10px;
+}
+
+.liveTopicInput {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid #dbe6f3;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #344054;
+  font-weight: 900;
+}
+
+.liveTopicInput input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid #cfd9e8;
+  border-radius: 8px;
+  color: #101828;
+  font: inherit;
+}
+
+.liveTopicInput input:disabled {
+  background: #f2f4f7;
+  color: #98a2b3;
+  cursor: not-allowed;
+}
+
 .liveTranscript {
   display: flex;
   align-items: flex-start;
@@ -321,7 +381,7 @@ button.ghost:disabled {
 
 .transcriptStream p {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto auto auto minmax(0, 1fr);
   gap: 8px;
   align-items: start;
   margin: 0;
@@ -343,6 +403,36 @@ button.ghost:disabled {
 .transcriptStream small {
   color: #067647;
   font-weight: 900;
+}
+
+.speakerTag {
+  min-width: 72px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #ecfdf3;
+  color: #067647;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.5;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.transcriptStream em {
+  min-width: 22px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: #175cd3;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.transcriptStream em.empty {
+  visibility: hidden;
 }
 
 .segmentError small,
@@ -380,34 +470,136 @@ button.ghost:disabled {
   flex-wrap: wrap;
 }
 
+.configEntry {
+  position: relative;
+}
+
+.configButton {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  width: 100%;
+  min-height: 78px;
+  justify-content: stretch;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  background: rgba(255, 255, 255, 0.14);
+  color: white;
+}
+
+.configButton:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.configButtonIcon {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.configButtonTitle {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  text-align: left;
+}
+
+.configButtonTitle strong {
+  overflow: hidden;
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.configButtonSummary {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  width: 100%;
+  margin-top: 2px;
+}
+
+.configButtonSummary i {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 5px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #d9ebff;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.configButtonSummary b {
+  min-width: 0;
+  overflow: hidden;
+  color: white;
+  font-size: 11px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.configOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(16, 24, 40, 0.34);
+}
+
 .settingsCard {
   padding: 18px;
 }
 
 .configPanel {
-  position: sticky;
-  top: 20px;
   display: grid;
   gap: 16px;
+  width: min(720px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
 }
 
-.configToggle {
-  width: 100%;
-  min-height: 48px;
+.configPanelHeader {
+  display: flex;
+  align-items: flex-start;
   justify-content: space-between;
-  padding: 0;
-  background: transparent;
-  color: #101828;
+  gap: 14px;
 }
 
-.configToggle:hover {
+.iconButton {
+  flex: 0 0 auto;
+  width: 42px;
+  min-height: 42px;
+  padding: 0;
+  border: 1px solid #dbe6f3;
+  background: #f8fbff;
+  color: #344054;
+}
+
+.iconButton:hover {
+  border-color: #155eef;
   color: #155eef;
 }
 
-.configToggle span {
+.configPanelHeader > div {
   display: inline-flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.configPanelHeader .eyebrow {
+  margin: 0;
 }
 
 .configSummary {
@@ -532,6 +724,15 @@ button.ghost:disabled {
 .toggleLabel small {
   color: #667085;
   line-height: 1.5;
+}
+
+.disabledLabel {
+  opacity: 0.58;
+}
+
+.disabledLabel,
+.disabledLabel input {
+  cursor: not-allowed;
 }
 
 .settingsGroupTitle {
@@ -706,14 +907,9 @@ audio {
 }
 
 @media (max-width: 980px) {
-  .workspaceLayout,
   .two,
   .four {
     grid-template-columns: 1fr;
-  }
-
-  .configPanel {
-    position: static;
   }
 }
 
@@ -732,8 +928,26 @@ audio {
     padding: 22px;
   }
 
-  .heroBadge {
+  .heroActions {
+    flex: 1 1 auto;
+    width: 100%;
     min-width: 0;
+    margin-left: 0;
+    justify-items: stretch;
+  }
+
+  .configButtonSummary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .configOverlay {
+    align-items: stretch;
+    padding: 10px;
+  }
+
+  .configPanel {
+    width: 100%;
+    max-height: calc(100vh - 20px);
   }
 
   .uploadCard,
@@ -743,6 +957,10 @@ audio {
 
   button {
     width: 100%;
+  }
+
+  .iconButton {
+    width: 42px;
   }
 
   .textCardHeader {

@@ -73,7 +73,7 @@
   - 对传入文本单独生成摘要。
   - 表单字段：`text`、`llm_api_key`、`llm_base_url`、`llm_model`。
 
-`POST /api/audio/process` 仍然是主流程入口，但现在内部复用了增强步骤。默认会跳过原始音频转写、只转写增强后的音频，以减少长音频处理时间；如需对照原始/增强两版转写结果，可在表单中传 `transcribe_original=true`。
+`POST /api/audio/process` 仍然是主流程入口，但现在处理流程可组合配置：`enhance_audio` 控制是否生成增强音频，`transcribe_original` 控制是否转写原始音频，`transcribe_enhanced` 控制是否转写增强音频。默认会增强原音并转写增强音频，但跳过原始音频转写。
 
 前端结果区会为可用的文本结果提供 `txt`、`doc`、`docx` 下载按钮。若本次没有启用原始音频转写，原始转写卡片只显示跳过说明，不显示下载按钮。
 
@@ -90,6 +90,13 @@
 - `asr_api_key`: ASR Key
 - `asr_base_url`: ASR Base URL
 - `asr_model`: ASR Model
+- `live_enhance`: 是否先增强实时录音片段，`true` 时先生成增强 WAV 再转写
+- `atten_lim`: 实时增强使用的降噪强度，复用主页面增强参数
+- `live_llm_optimize`: 是否使用大模型优化实时转写片段
+- `live_topic`: 本次对话主题，供大模型修正术语、同音字和断句
+- `llm_api_key`: LLM API Key
+- `llm_base_url`: LLM Base URL
+- `llm_model`: LLM Model
 - `xunfei_app_id`: 讯飞 App ID，仅 `asr_provider=xunfei` 时需要
 - `xunfei_api_key`: 讯飞 API Key，仅 `asr_provider=xunfei` 时需要
 - `xunfei_api_secret`: 讯飞 API Secret，仅 `asr_provider=xunfei` 时需要
@@ -101,7 +108,13 @@
   "session_id": "live-session-id",
   "sequence": 0,
   "text": "识别出的片段文本",
-  "duration": 7.0
+  "raw_text": "ASR 原始片段文本",
+  "duration": 7.0,
+  "enhanced": true,
+  "optimized": true,
+  "speaker_label": "说话人 A",
+  "speaker_confidence": 0.82,
+  "voice_activity": 0.74
 }
 ```
 
@@ -112,6 +125,16 @@
 
 - `app.services.audio_io.duration_seconds`
   - 返回转码后的片段时长。
+
+- `app.services.enhance.enhance_speech_file`
+  - 当 `live_enhance=true` 时，先增强实时录音片段，再把增强后的 WAV 交给 ASR。
+
+- `app.services.llm.refine_live_transcript`
+  - 当 `live_llm_optimize=true` 时，根据 `live_topic` 优化 ASR 片段文本。
+
+- `app.services.speaker_profile.identify_dominant_speaker`
+  - 对每个实时片段提取轻量声学特征，并在当前会话内聚类为 `说话人 A/B/C`。
+  - 当前输出的是片段主导音色标签，不是逐词级专业说话人分离。
 
 - `app.services.asr.transcribe_audio`
   - 复用现有 ASR 分发逻辑。

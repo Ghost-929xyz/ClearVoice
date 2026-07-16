@@ -5,12 +5,15 @@ import importlib.util
 import os
 from pathlib import Path
 
+import numpy as np
+import soundfile as sf
+
 
 class EnhancementError(RuntimeError):
     pass
 
 
-def enhance_speech_file(input_wav: Path, output_wav: Path) -> None:
+def enhance_speech_file(input_wav: Path, output_wav: Path, atten_lim: int = 20) -> None:
     """Enhance speech with DeepFilterNet and write a browser-playable WAV file."""
     if not _deepfilternet_available():
         raise EnhancementError("未安装 DeepFilterNet。请确认后端使用 .venv 启动，并在 backend 目录执行：python -m pip install -r requirements.txt")
@@ -28,6 +31,8 @@ def enhance_speech_file(input_wav: Path, output_wav: Path) -> None:
         str(input_wav),
         "--output-dir",
         str(work_dir),
+        "--atten-lim",
+        str(atten_lim),
     ]
 
     try:
@@ -45,7 +50,7 @@ def enhance_speech_file(input_wav: Path, output_wav: Path) -> None:
     enhanced = _find_enhanced_file(work_dir, input_wav)
     if not enhanced:
         raise EnhancementError("DeepFilterNet 未生成增强音频文件")
-    shutil.copyfile(enhanced, output_wav)
+    _write_enhanced_output(enhanced, output_wav)
 
 
 def _find_enhanced_file(work_dir: Path, input_wav: Path) -> Path | None:
@@ -63,3 +68,21 @@ def _find_enhanced_file(work_dir: Path, input_wav: Path) -> Path | None:
 
 def _deepfilternet_available() -> bool:
     return importlib.util.find_spec("df.enhance") is not None
+
+
+def _write_enhanced_output(enhanced_wav: Path, output_wav: Path) -> None:
+    enhanced, enhanced_sr = sf.read(enhanced_wav, dtype="float32")
+    enhanced = _to_mono(enhanced)
+    if len(enhanced) == 0:
+        raise EnhancementError("增强音频为空，无法输出")
+
+    peak = float(np.max(np.abs(enhanced)))
+    if peak > 0.98:
+        enhanced = enhanced / peak * 0.98
+    sf.write(output_wav, enhanced, enhanced_sr, subtype="PCM_16")
+
+
+def _to_mono(audio: np.ndarray) -> np.ndarray:
+    if audio.ndim == 1:
+        return audio
+    return audio.mean(axis=1)

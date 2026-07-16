@@ -5,9 +5,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from app.config import get_settings
-from app.schemas import ProcessResult, RuntimeOpenAIConfig
+from app.schemas import EnhanceResult, LlmResult, ProcessResult, RuntimeOpenAIConfig, TranscribeResult
 from app.services.enhance import EnhancementError
-from app.services.pipeline import process_upload
+from app.services.pipeline import enhance_upload, process_upload, summarize_text, transcribe_task_audio
 
 app = FastAPI(title="ClearVoice API")
 
@@ -35,6 +35,10 @@ async def process_audio(
     llm_api_key: str | None = Form(default=None),
     llm_base_url: str | None = Form(default=None),
     llm_model: str | None = Form(default=None),
+    xunfei_app_id: str | None = Form(default=None),
+    xunfei_api_key: str | None = Form(default=None),
+    xunfei_api_secret: str | None = Form(default=None),
+    atten_lim: int = Form(default=20),
 ) -> ProcessResult:
     if not file.content_type or not file.content_type.startswith(("audio/", "video/", "application/octet-stream")):
         raise HTTPException(status_code=400, detail="请上传音频或视频文件")
@@ -47,6 +51,10 @@ async def process_audio(
             llm_api_key=_clean_form_value(llm_api_key),
             llm_base_url=_clean_form_value(llm_base_url),
             llm_model=_clean_form_value(llm_model),
+            xunfei_app_id=_clean_form_value(xunfei_app_id),
+            xunfei_api_key=_clean_form_value(xunfei_api_key),
+            xunfei_api_secret=_clean_form_value(xunfei_api_secret),
+            atten_lim=max(0, min(100, atten_lim)),
         )
         return await process_upload(file, runtime_config)
     except FileNotFoundError as exc:
@@ -55,6 +63,70 @@ async def process_audio(
             detail="未找到 ffmpeg，请安装 ffmpeg、配置 FFMPEG_PATH，或将解压后的 ffmpeg 包放到项目根目录、tools 或 backend/tools 目录",
         ) from exc
     except EnhancementError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/audio/enhance", response_model=EnhanceResult)
+async def enhance_audio(
+    file: UploadFile = File(...),
+    atten_lim: int = Form(default=20),
+) -> EnhanceResult:
+    if not file.content_type or not file.content_type.startswith(("audio/", "video/", "application/octet-stream")):
+        raise HTTPException(status_code=400, detail="请上传音频或视频文件")
+    try:
+        return await enhance_upload(file, RuntimeOpenAIConfig(atten_lim=max(0, min(100, atten_lim))))
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=500, detail="未找到 ffmpeg，请安装 ffmpeg 或配置 FFMPEG_PATH") from exc
+    except EnhancementError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/audio/transcribe", response_model=TranscribeResult)
+def transcribe_audio_endpoint(
+    task_id: str = Form(...),
+    kind: str = Form(default="enhanced"),
+    asr_provider: str | None = Form(default=None),
+    asr_api_key: str | None = Form(default=None),
+    asr_base_url: str | None = Form(default=None),
+    asr_model: str | None = Form(default=None),
+    xunfei_app_id: str | None = Form(default=None),
+    xunfei_api_key: str | None = Form(default=None),
+    xunfei_api_secret: str | None = Form(default=None),
+) -> TranscribeResult:
+    try:
+        runtime_config = RuntimeOpenAIConfig(
+            asr_provider=_clean_form_value(asr_provider),
+            asr_api_key=_clean_form_value(asr_api_key),
+            asr_base_url=_clean_form_value(asr_base_url),
+            asr_model=_clean_form_value(asr_model),
+            xunfei_app_id=_clean_form_value(xunfei_app_id),
+            xunfei_api_key=_clean_form_value(xunfei_api_key),
+            xunfei_api_secret=_clean_form_value(xunfei_api_secret),
+        )
+        return transcribe_task_audio(task_id, kind, runtime_config)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/audio/summarize", response_model=LlmResult)
+def summarize_audio_text(
+    text: str = Form(...),
+    llm_api_key: str | None = Form(default=None),
+    llm_base_url: str | None = Form(default=None),
+    llm_model: str | None = Form(default=None),
+) -> LlmResult:
+    try:
+        runtime_config = RuntimeOpenAIConfig(
+            llm_api_key=_clean_form_value(llm_api_key),
+            llm_base_url=_clean_form_value(llm_base_url),
+            llm_model=_clean_form_value(llm_model),
+        )
+        return summarize_text(text, runtime_config)
+    except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

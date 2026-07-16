@@ -209,6 +209,9 @@ mp3  wav  m4a  webm  mp4  flac  ogg  aac
 ```text
 GET  /api/health
 POST /api/audio/process
+POST /api/audio/enhance
+POST /api/audio/transcribe
+POST /api/audio/summarize
 GET  /api/audio/file/{task_id}/original
 GET  /api/audio/file/{task_id}/enhanced
 ```
@@ -225,6 +228,26 @@ GET  /api/audio/file/{task_id}/enhanced
 | `llm_api_key` | string | LLM API Key |
 | `llm_base_url` | string | LLM Base URL |
 | `llm_model` | string | LLM 模型名 |
+| `xunfei_app_id` | string | 讯飞 App ID，`asr_provider=xunfei` 时使用 |
+| `xunfei_api_key` | string | 讯飞 API Key，`asr_provider=xunfei` 时使用 |
+| `xunfei_api_secret` | string | 讯飞 API Secret，`asr_provider=xunfei` 时使用 |
+| `atten_lim` | number | DeepFilterNet `--atten-lim` 参数，默认 `20` |
+
+分步接口：
+
+| 接口 | 说明 |
+|---|---|
+| `POST /api/audio/enhance` | 上传文件并只执行音频增强，返回 `task_id`、音频地址、噪声和指标 |
+| `POST /api/audio/transcribe` | 根据 `task_id` 转写 `original` 或 `enhanced` 音频 |
+| `POST /api/audio/summarize` | 对传入文本生成摘要、关键词和行动项 |
+
+讯飞 ASR 使用语音听写 IAT WebSocket 接口。也可以在 `backend/.env` 中配置：
+
+```env
+XUNFEI_APP_ID=你的 App ID
+XUNFEI_API_KEY=你的 API Key
+XUNFEI_API_SECRET=你的 API Secret
+```
 
 ---
 

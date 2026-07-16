@@ -13,7 +13,7 @@ class EnhancementError(RuntimeError):
     pass
 
 
-def enhance_speech_file(input_wav: Path, output_wav: Path) -> None:
+def enhance_speech_file(input_wav: Path, output_wav: Path, atten_lim: int = 20) -> None:
     """Enhance speech with DeepFilterNet and write a browser-playable WAV file."""
     if not _deepfilternet_available():
         raise EnhancementError("未安装 DeepFilterNet。请确认后端使用 .venv 启动，并在 backend 目录执行：python -m pip install -r requirements.txt")
@@ -32,7 +32,7 @@ def enhance_speech_file(input_wav: Path, output_wav: Path) -> None:
         "--output-dir",
         str(work_dir),
         "--atten-lim",
-        "20",
+        str(atten_lim),
     ]
 
     try:

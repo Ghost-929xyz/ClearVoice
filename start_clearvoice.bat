@@ -61,7 +61,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-"%BACKEND_PY%" -c "import fastapi, uvicorn, pydantic_settings, soundfile, openai, df, torch, torchaudio" >nul 2>nul
+"%BACKEND_PY%" -c "import fastapi, uvicorn, pydantic_settings, soundfile, openai, opencc, websocket, df, torch, torchaudio" >nul 2>nul
 if errorlevel 1 (
   echo Installing backend dependencies...
   "%BACKEND_PY%" -m pip install -U pip setuptools

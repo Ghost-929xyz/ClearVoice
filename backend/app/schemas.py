@@ -9,6 +9,10 @@ class RuntimeOpenAIConfig(BaseModel):
     llm_api_key: str | None = None
     llm_base_url: str | None = None
     llm_model: str | None = None
+    xunfei_app_id: str | None = None
+    xunfei_api_key: str | None = None
+    xunfei_api_secret: str | None = None
+    atten_lim: int = 20
 
     @property
     def has_asr_api_key(self) -> bool:
@@ -56,6 +60,20 @@ class LlmResult(BaseModel):
     summary: str
     keywords: list[str]
     action_items: list[str]
+
+
+class EnhanceResult(BaseModel):
+    task_id: str
+    status: str
+    audio: AudioInfo
+    noise: NoiseInfo
+    metrics: Metrics
+
+
+class TranscribeResult(BaseModel):
+    task_id: str
+    kind: str
+    text: str
 
 
 class ProcessResult(BaseModel):

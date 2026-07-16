@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     openai_base_url: str | None = None
     llm_model: str = "gpt-4o-mini"
     asr_model: str = "whisper-1"
+    xunfei_app_id: str | None = None
+    xunfei_api_key: str | None = None
+    xunfei_api_secret: str | None = None
 
     @property
     def uploads_dir(self) -> Path:
